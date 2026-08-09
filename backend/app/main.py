@@ -3,6 +3,7 @@ from app.db import get_pool
 from app.models.schemas import LoanFileCreate
 import hashlib
 from fastapi import UploadFile
+from app.graph.build import build_classify_graph
 
 app = FastAPI(title="Loan File Intelligence System")
 
@@ -94,7 +95,38 @@ async def list_documents(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT document_id, file_path, received_at FROM documents WHERE loan_file_id = $1 ORDER BY received_at",
+            "SELECT document_id, file_path, doc_type, doc_type_confidence, received_at FROM documents WHERE loan_file_id = $1 ORDER BY received_at",
             loan_file_id,
         )
     return [dict(r) for r in rows]
+
+_classify_graph = build_classify_graph()
+
+@app.post("/documents/{document_id}/classify")
+async def classify_document(document_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT raw_text FROM documents WHERE document_id = $1", document_id)
+        if row is None:
+            return {
+                "error": "document not found"
+            }
+        result = await _classify_graph.ainvoke({
+            "document_id": document_id,
+            "raw_text": row["raw_text"],
+            "doc_type": "",
+            "confidence": 0.0,
+        })
+        # .ainvoke() runs the graph start to finish and returns the final
+        # state — result["doc_type"] and result["confidence"] are now
+        # whatever classify_doc set them to.
+
+        await conn.execute(
+            "UPDATE documents SET doc_type = $1, doc_type_confidence = $2 WHERE document_id = $3",
+            result["doc_type"], result["confidence"], document_id,
+        )
+    return {
+        "document_id": document_id,
+        "doc_type": result["doc_type"],
+        "confidence": result["confidence"],
+    }
