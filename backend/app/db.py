@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv() # reads .env into enviromnet variables
 
-DATABASE_URL = os.environ["DATABSE_URL"]
+DATABASE_URL = os.environ["DATABASE_URL"]
 _pool: asyncpg.Pool | None = None
 
 async def get_pool() -> asyncpg.Pool:
