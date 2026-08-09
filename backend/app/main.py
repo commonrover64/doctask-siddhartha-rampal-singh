@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from app.db import get_pool
 from app.models.schemas import LoanFileCreate
+import hashlib
+from fastapi import UploadFile
 
 app = FastAPI(title="Loan File Intelligence System")
 
@@ -55,3 +57,44 @@ async def list_loan_files():
     # asyncpg returns special Record objects, not plain dicts — FastAPI
     # can't JSON-serialize those directly, so we convert each one to a
     # dict before returning.
+
+@app.post("/loan-files/{loan_file_id}/documents")
+async def upload_document(loan_file_id: str, file: UploadFile):
+    # UploadFile is FastAPI's type for "this parameter comes from a
+    # multipart file upload", not a JSON body. FastAPI automatically
+    # renders a file-picker for this in /docs.
+
+    content = await file.read()
+    # .read() gives raw bytes. UploadFile is a stream under the hood
+    # (so large files don't all sit in memory at once), so reading it
+    # is itself an async operation.
+
+    text = content.decode("utf-8", errors="ignore")
+    # Our corpus docs are plain .txt, so utf-8 decode is enough for now.
+    # errors="ignore" means: if a byte doesn't decode cleanly, skip it
+    # rather than crashing, fine for now, we'll revisit for real PDFs.
+
+    content_hash = hashlib.sha256(content).hexdigest()
+    # Hash the RAW BYTES (not the decoded text) — this is the fingerprint
+    # discussed above. hexdigest() turns the hash into a readable string.
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        document_id = await conn.fetchval(
+            """INSERT INTO documents (loan_file_id, file_path, raw_text, content_hash)
+               VALUES ($1, $2, $3, $4)
+               RETURNING document_id""",
+            loan_file_id, file.filename, text, content_hash,
+        )
+    return {"document_id": str(document_id)}
+
+
+@app.get("/loan-files/{loan_file_id}/documents")
+async def list_documents(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT document_id, file_path, received_at FROM documents WHERE loan_file_id = $1 ORDER BY received_at",
+            loan_file_id,
+        )
+    return [dict(r) for r in rows]
