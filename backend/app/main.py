@@ -102,21 +102,24 @@ async def list_documents(loan_file_id: str):
 
 _classify_graph = build_classify_graph()
 
-@app.post("/documents/{document_id}/classify")
-async def classify_document(document_id: str):
+@app.post("/documents/{document_id}/process")
+async def process_document(document_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT raw_text FROM documents WHERE document_id = $1", document_id)
+        row = await conn.fetchrow(
+            "SELECT raw_text, loan_file_id FROM documents WHERE document_id = $1", document_id)
         if row is None:
             return {
                 "error": "document not found"
             }
         result = await _classify_graph.ainvoke({
             "document_id": document_id,
+            "loan_file_id": str(row["loan_file_id"]),
             "raw_text": row["raw_text"],
             "doc_type": "",
             "confidence": 0.0,
             "needs_review": False,  # default, only flag_for_review flips this
+            "facts": [],
         })
         # .ainvoke() runs the graph start to finish and returns the final
         # state — result["doc_type"] and result["confidence"] are now
@@ -126,9 +129,26 @@ async def classify_document(document_id: str):
             "UPDATE documents SET doc_type = $1, doc_type_confidence = $2, needs_review = $3 WHERE document_id = $4",
             result["doc_type"], result["confidence"], result["needs_review"], document_id,
         )
+
+        for field in result["facts"]:
+            await conn.execute(
+                "INSERT INTO extracted_facts (document_id, loan_file_id, field_name, field_value, quote) VALUES ($1, $2, $3, $4, $5)",
+                document_id, row["loan_file_id"], field.get("field_name"), field.get("field_value"), field.get("quote"),
+            )
     return {
         "document_id": document_id,
         "doc_type": result["doc_type"],
         "confidence": result["confidence"],
         "needs_review": result["needs_review"],
+        "facts": result["facts"],
     }
+
+@app.get("/loan-files/{loan_file_id}/facts")
+async def list_facts(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT field_name, field_value, quote, document_id FROM extracted_facts WHERE loan_file_id = $1 ORDER BY extracted_at",
+            loan_file_id,
+        )
+    return [dict(r) for r in rows]
