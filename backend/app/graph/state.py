@@ -8,3 +8,4 @@ class ClassifyState(TypedDict):
     raw_text: str          # its content, fetched before the graph starts
     doc_type: str          # the node fills this in
     confidence: float      # the node fills this in too
+    needs_review: bool     # set by flag_for_review when confidence is too low

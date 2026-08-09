@@ -39,3 +39,14 @@ async def classify_doc(state: dict) -> dict:
         "doc_type": parsed.get("doc_type", "unknown"),
         "confidence": parsed.get("confidence", 0.0),
     }
+
+CONFIDENCE_THRESHOLD = 0.85
+
+async def flag_for_review(state: dict) -> dict:
+    """Runs only when classify_doc's confidence was too low. Doesn't call
+    the LLM again, just marks the state so main.py knows to persist the
+    flag. This is the 'escalation to a person' decision."""
+    return {
+        **state, 
+        "needs_review": True,
+    }

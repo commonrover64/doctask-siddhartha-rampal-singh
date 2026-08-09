@@ -95,7 +95,7 @@ async def list_documents(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT document_id, file_path, doc_type, doc_type_confidence, received_at FROM documents WHERE loan_file_id = $1 ORDER BY received_at",
+            "SELECT document_id, file_path, doc_type, doc_type_confidence, received_at, needs_review FROM documents WHERE loan_file_id = $1 ORDER BY received_at",
             loan_file_id,
         )
     return [dict(r) for r in rows]
@@ -116,17 +116,19 @@ async def classify_document(document_id: str):
             "raw_text": row["raw_text"],
             "doc_type": "",
             "confidence": 0.0,
+            "needs_review": False,  # default, only flag_for_review flips this
         })
         # .ainvoke() runs the graph start to finish and returns the final
         # state — result["doc_type"] and result["confidence"] are now
         # whatever classify_doc set them to.
 
         await conn.execute(
-            "UPDATE documents SET doc_type = $1, doc_type_confidence = $2 WHERE document_id = $3",
-            result["doc_type"], result["confidence"], document_id,
+            "UPDATE documents SET doc_type = $1, doc_type_confidence = $2, needs_review = $3 WHERE document_id = $4",
+            result["doc_type"], result["confidence"], result["needs_review"], document_id,
         )
     return {
         "document_id": document_id,
         "doc_type": result["doc_type"],
         "confidence": result["confidence"],
+        "needs_review": result["needs_review"],
     }
