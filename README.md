@@ -42,11 +42,18 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   to classify a document's type, a conditional edge routes low-confidence
   results to a `flag_for_review` node instead of accepting a guess
   silently
+  - Extraction (`app/graph/nodes.py::extract_facts`): pulls structured
+  facts (loan_amount, income, dti_ratio, etc) from documents into an
+  append-only `extracted_facts` table, each fact stores the exact quote
+  it was extracted from as a citation
+- Reconciliation (`app/graph/nodes.py::reconcile_facts`): compares a
+  newly extracted fact against the most recent fact on record for the
+  same field, opens a row in `conflicts` if they disagree beyond
+  tolerance instead of silently picking one. Numbers get a tolerance
+  for formatting differences, everything else needs an exact match
 
 ## What's not built yet
 
-- Extraction (pulling structured facts out of documents, with citations)
-- Reconciliation (detecting when two documents disagree on a field)
 - The human review queue and approval endpoint
 - Rule/playbook checking (movement 2)
 - Incremental updates on new document arrival (movement 3)
@@ -78,6 +85,12 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   could be reviewed together. `embedding vector(...)` is deferred
   entirely until an embedding model is chosen, to avoid hardcoding a
   vector dimension before it's needed.
+  - **Reconciliation compares against only the most recent fact per field,
+  not the full history.** Simpler to reason about, and matches the
+  assignment's framing of "does this new document contradict what the
+  register currently says", not "does it contradict anything ever seen."
+  Older disagreeing facts stay in `extracted_facts` regardless, nothing
+  is lost, just not actively compared against.
 
 ## Repo layout
 
