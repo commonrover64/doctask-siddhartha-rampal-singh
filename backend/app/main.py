@@ -4,6 +4,7 @@ from app.models.schemas import LoanFileCreate
 import hashlib
 from fastapi import UploadFile
 from app.graph.build import build_classify_graph
+from app.schemas import ReviewDecision
 
 app = FastAPI(title="Loan File Intelligence System")
 
@@ -117,8 +118,13 @@ async def process_document(document_id: str):
         # fetch the MOST RECENT fact per field_name for this loan file,
         # this is what reconcile_facts compares against
         existing_rows = await conn.fetch(
-            """SELECT DISTINCT ON (field_name) fact_id, field_name, field_value FROM extracted_facts 
-               WHERE loan_file_id = $1 ORDER BY field_name, extracted_at DESC""" , loan_file_id,)
+            """SELECT ef.fact_id, ef.field_name, ef.field_value
+            FROM register r
+            JOIN extracted_facts ef ON ef.fact_id = r.fact_id
+            WHERE r.loan_file_id = $1""", 
+            loan_file_id,
+        )
+
         existing_facts = {
             r["field_name"]: {
                 "fact_id": str(r["fact_id"]),
@@ -162,22 +168,36 @@ async def process_document(document_id: str):
                 VALUES ($1, $2, $3, $4, $5) RETURNING fact_id""",
                 document_id, loan_file_id, field.get("field_name"), field.get("field_value"), field.get("quote"),
             )
+            field_name = field.get("field_name")
 
             # reconcile_facts (inside the graph) already decided WHICH fields
             # conflict, but it ran before this fact existed in the database, so
             # it couldn't know this fact's fact_id yet. Look up by field_name to
             # find the conflict this specific fact belongs to, if any.
-            conflict = conflicts_by_field.get(field.get("field_name"))
+            conflict = conflicts_by_field.get(field_name)
             if conflict:
-                # Now that we have fact_id (the new value) and fact_id_old (the
-                # prior value, already known from before the graph ran), we can
-                # finally write the complete conflict row.
-                await conn.execute(
+                conflict_id = await conn.fetchval(
                     """INSERT INTO conflicts (loan_file_id, field_name, fact_id_old, fact_id_new)
-                    VALUES ($1, $2, $3, $4)""",
-                    loan_file_id, conflict["field_name"], conflict["fact_id_old"], fact_id,
+                    VALUES ($1, $2, $3, $4) RETURNING conflict_id""",
+                    loan_file_id, field_name, conflict["fact_id_old"], fact_id,
                 )
-        
+                await conn.execute(
+                    """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
+                    VALUES ($1, 'conflict', $2, $3)""",
+                    loan_file_id, conflict_id, field_name,
+                )
+            else:
+                prior = existing_facts.get(field_name)
+                if prior is None:
+                    # brand new field, nothing in the register yet, needs approval to create the first entry
+                    await conn.execute(
+                        """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
+                        VALUES ($1, 'register_update', $2, $3)""",
+                        loan_file_id, fact_id, field_name,
+                    )
+                # else: prior exists and matches (no conflict was raised), nothing
+                # changed, nothing to review, this is what makes an update cost
+                # like an update instead of a full re-review every time
     return {
         "document_id": document_id,
         "doc_type": result["doc_type"],
@@ -206,4 +226,105 @@ async def list_conflicts(loan_file_id: str):
             loan_file_id,
         )
     return [dict(r) for r in rows]
-    
+
+@app.get("/review/{loan_file_id}/pending")
+async def list_pending(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT * FROM review_queue WHERE loan_file_id = $1 AND status = 'pending' ORDER BY created_at""",
+            loan_file_id,
+        )
+    return [dict(r) for r in rows]
+
+@app.post("/review/{item_id}/decide")
+async def decide_review_item(item_id: str, decision: ReviewDecision):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # everything inside this transaction either all commits or all
+        # rolls back together, and the FOR UPDATE lock below stays held
+        # for the whole block, not just the one SELECT
+        async with conn.transaction():
+            item = await conn.fetchrow(
+                "SELECT * FROM review_queue WHERE item_id = $1 FOR UPDATE",
+                item_id,
+            )
+
+            if item is None:
+                return {"error": "review item not found"}
+            if item["status"] != "pending":
+                # someone already decided this item, don't apply a second
+                # decision on top of it
+                return {"error": f"item already {item['status']}"}
+
+            if decision.decision == "reject":
+                await conn.execute(
+                    "UPDATE review_queue SET status = 'rejected', decided_at = now() WHERE item_id = $1",
+                    item_id,
+                )
+                return {"item_id": item_id, "status": "rejected"}
+
+            # approve path: figure out which fact_id actually wins
+            if item["item_type"] == "register_update":
+                # no conflict involved, only one fact to choose from
+                chosen_fact_id = item["ref_id"]
+            else:  # item_type == "conflict"
+                conflict = await conn.fetchrow(
+                    "SELECT * FROM conflicts WHERE conflict_id = $1",
+                    item["ref_id"],
+                )
+                # reviewer picks which side of the conflict wins, defaults
+                # to the newer value if they didn't specify
+                keep = decision.keep or "new"
+                chosen_fact_id = conflict["fact_id_new"] if keep == "new" else conflict["fact_id_old"]
+                await conn.execute(
+                    "UPDATE conflicts SET status = 'resolved' WHERE conflict_id = $1",
+                    item["ref_id"],
+                )
+
+            # whatever was in the register before, for the audit trail below
+            old = await conn.fetchrow(
+                "SELECT fact_id FROM register WHERE loan_file_id = $1 AND field_name = $2",
+                item["loan_file_id"], item["field_name"],
+            )
+
+            # ON CONFLICT DO UPDATE: first approval for this field inserts
+            # a fresh row, any later approval just overwrites it, register
+            # only ever holds the CURRENT accepted value
+            await conn.execute(
+                """INSERT INTO register (loan_file_id, field_name, fact_id, updated_at)
+                   VALUES ($1, $2, $3, now())
+                   ON CONFLICT (loan_file_id, field_name) DO UPDATE SET fact_id = $3, updated_at = now()""",
+                item["loan_file_id"], item["field_name"], chosen_fact_id,
+            )
+
+            # append-only, this row is never touched again, it's what lets
+            # you answer "what changed, when, from what" without guessing
+            await conn.execute(
+                """INSERT INTO register_history (loan_file_id, field_name, old_fact_id, new_fact_id)
+                   VALUES ($1, $2, $3, $4)""",
+                item["loan_file_id"], item["field_name"],
+                old["fact_id"] if old else None, chosen_fact_id,
+            )
+
+            await conn.execute(
+                "UPDATE review_queue SET status = 'approved', decided_at = now() WHERE item_id = $1",
+                item_id,
+            )
+
+    return {
+        "item_id": item_id, 
+        "status": "approved"
+    }
+
+@app.get("/loan-files/{loan_file_id}/register")
+async def get_register(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT r.field_name, ef.field_value, ef.quote, r.updated_at
+               FROM register r JOIN extracted_facts ef ON ef.fact_id = r.fact_id
+               WHERE r.loan_file_id = $1 ORDER BY r.field_name""",
+            loan_file_id,
+        )
+    return [dict(r) for r in rows]
