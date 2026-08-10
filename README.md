@@ -51,10 +51,14 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   same field, opens a row in `conflicts` if they disagree beyond
   tolerance instead of silently picking one. Numbers get a tolerance
   for formatting differences, everything else needs an exact match
+- Human review queue and register: `register` holds only approved
+  facts, `review_queue` holds pending decisions, `POST
+  /review/{item_id}/decide` is the single approval gate, rejecting one
+  item is its own transaction and never touches siblings,
+  `register_history` is an append-only audit trail
 
 ## What's not built yet
 
-- The human review queue and approval endpoint
 - Rule/playbook checking (movement 2)
 - Incremental updates on new document arrival (movement 3)
 - Resumability (LangGraph checkpointing)
