@@ -11,3 +11,5 @@ class ClassifyState(TypedDict):
     confidence: float      # the node fills this in too
     needs_review: bool     # set by flag_for_review when confidence is too low
     facts: list[dict]      # filled in by extract_facts
+    existing_facts: dict[str, dict] # field_name -> most recent fact, fetched BEFORE the graph runs
+    conflicts: list[dict]  # filled in by reconcile_facts

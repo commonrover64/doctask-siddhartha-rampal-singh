@@ -112,6 +112,21 @@ async def process_document(document_id: str):
             return {
                 "error": "document not found"
             }
+        loan_file_id = row["loan_file_id"]
+
+        # fetch the MOST RECENT fact per field_name for this loan file,
+        # this is what reconcile_facts compares against
+        existing_rows = await conn.fetch(
+            """SELECT DISTINCT ON (field_name) fact_id, field_name, field_value FROM extracted_facts 
+               WHERE loan_file_id = $1 ORDER BY field_name, extracted_at DESC""" , loan_file_id,)
+        existing_facts = {
+            r["field_name"]: {
+                "fact_id": str(r["fact_id"]),
+                "field_value": r["field_value"],
+            }
+            for r in existing_rows
+        }  
+        
         result = await _classify_graph.ainvoke({
             "document_id": document_id,
             "loan_file_id": str(row["loan_file_id"]),
@@ -120,6 +135,8 @@ async def process_document(document_id: str):
             "confidence": 0.0,
             "needs_review": False,  # default, only flag_for_review flips this
             "facts": [],
+            "existing_facts": existing_facts,
+            "conflicts": [], 
         })
         # .ainvoke() runs the graph start to finish and returns the final
         # state — result["doc_type"] and result["confidence"] are now
@@ -130,17 +147,44 @@ async def process_document(document_id: str):
             result["doc_type"], result["confidence"], result["needs_review"], document_id,
         )
 
+        # build a lookup from field_name -> conflict, so once we know the
+        # new fact_id (after inserting it below) we can fill in fact_id_new
+        conflicts_by_field = {
+            c["field_name"]: c for c in result["conflicts"]
+        }
+
         for field in result["facts"]:
-            await conn.execute(
-                "INSERT INTO extracted_facts (document_id, loan_file_id, field_name, field_value, quote) VALUES ($1, $2, $3, $4, $5)",
-                document_id, row["loan_file_id"], field.get("field_name"), field.get("field_value"), field.get("quote"),
+            # Insert this newly extracted fact as its own row, RETURNING fact_id
+            # gives us back the UUID Postgres just generated for it, we need this
+            # ID below to link a conflict to the fact that caused it.
+            fact_id = await conn.fetchval(
+                """INSERT INTO extracted_facts (document_id, loan_file_id, field_name, field_value, quote)
+                VALUES ($1, $2, $3, $4, $5) RETURNING fact_id""",
+                document_id, loan_file_id, field.get("field_name"), field.get("field_value"), field.get("quote"),
             )
+
+            # reconcile_facts (inside the graph) already decided WHICH fields
+            # conflict, but it ran before this fact existed in the database, so
+            # it couldn't know this fact's fact_id yet. Look up by field_name to
+            # find the conflict this specific fact belongs to, if any.
+            conflict = conflicts_by_field.get(field.get("field_name"))
+            if conflict:
+                # Now that we have fact_id (the new value) and fact_id_old (the
+                # prior value, already known from before the graph ran), we can
+                # finally write the complete conflict row.
+                await conn.execute(
+                    """INSERT INTO conflicts (loan_file_id, field_name, fact_id_old, fact_id_new)
+                    VALUES ($1, $2, $3, $4)""",
+                    loan_file_id, conflict["field_name"], conflict["fact_id_old"], fact_id,
+                )
+        
     return {
         "document_id": document_id,
         "doc_type": result["doc_type"],
         "confidence": result["confidence"],
         "needs_review": result["needs_review"],
         "facts": result["facts"],
+        "conflicts": result["conflicts"],
     }
 
 @app.get("/loan-files/{loan_file_id}/facts")
@@ -152,3 +196,14 @@ async def list_facts(loan_file_id: str):
             loan_file_id,
         )
     return [dict(r) for r in rows]
+
+@app.get("/loan-files/{loan_file_id}/conflicts")
+async def list_conflicts(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT * FROM conflicts WHERE loan_file_id = $1 ORDER BY opened_at""",
+            loan_file_id,
+        )
+    return [dict(r) for r in rows]
+    

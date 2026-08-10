@@ -83,3 +83,49 @@ async def extract_facts(state: dict) -> dict:
         **state,
         "facts": fields,
     }
+
+def _value_disagree(old_value: str, new_value: str, tolerance: float = 0.01) -> bool:
+    """Numbers get a tolerance (formatting differs, meaning doesn't),
+        everything else needs an exact match."""
+
+    def to_number(s: str):
+        try:
+            return float(s.replace("$", "").replace(",","").strip())
+        except ValueError:
+            return None
+
+    old_num, new_num = to_number(old_value), to_number(new_value)
+
+    if old_num is not None and new_num is not None:
+        if old_num == 0:
+            return new_num != 0
+        return abs(old_num - new_num) / abs(old_num) > tolerance
+    return old_value.strip() != new_value.strip()
+
+async def reconcile_facts(state: dict) -> dict:
+    """Compares newly extracted facts against what's already on record.
+    Does not touch the database, just decides which new facts conflict,
+    main.py handles actually writing the conflicts table."""
+
+    existing = state.get("existing_facts", {})
+    conflicts = []
+
+    for field in state["facts"]:
+        field_name = field.get("field_name")
+        new_value = field.get("field_value", "")
+        prior = existing.get(field_name)
+
+        if prior and _value_disagree(prior["field_value"], new_value):
+            conflicts.append({
+                "field_name": field_name,
+                "fact_id_old": prior["fact_id"],
+                # fact_id_new gets filled in by main.py after the INSERT,
+                # since this fact doesn't have a fact_id yet at this point
+                # in the graph, it hasn't been written to the DB yet
+                "old_value": prior["field_value"],
+                "new_value": new_value,
+            })
+    return {
+        **state,
+        "conflicts": conflicts,
+    }
