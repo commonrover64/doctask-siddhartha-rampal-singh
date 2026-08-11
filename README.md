@@ -56,12 +56,15 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   /review/{item_id}/decide` is the single approval gate, rejecting one
   item is its own transaction and never touches siblings,
   `register_history` is an append-only audit trail
+- **Resumability uses LangGraph's built-in Postgres checkpointer**
+  rather than custom save/resume logic. thread_id = run_id, a `runs`
+  table records the run_id before the graph starts so it survives a
+  crash even if the process dies before responding to the request.
 
 ## What's not built yet
 
 - Rule/playbook checking (movement 2)
 - Incremental updates on new document arrival (movement 3)
-- Resumability (LangGraph checkpointing)
 - MCP server
 - Automated tests
 - Frontend
