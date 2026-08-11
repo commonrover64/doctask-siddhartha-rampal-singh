@@ -3,6 +3,8 @@ tools in mcp_server.py. Neither one contains real logic itself, they're
 both thin wrappers around these functions, so a human using /docs and a
 program using MCP always get identical behavior."""
 
+from app.rules import run_playbook
+
 async def get_register(conn, loan_file_id: str):
     rows = await conn.fetch(
         """SELECT r.field_name, ef.field_value, ef.quote, r.updated_at
@@ -110,3 +112,13 @@ async def decide_review_item(conn, item_id: str, decision):
         "item_id": item_id, 
         "status": "approved"
     }
+
+async def check_loan_file(conn, loan_file_id: str):
+    return await run_playbook(conn, loan_file_id)
+
+async def list_findings(conn, loan_file_id: str):
+    rows = await conn.fetch(
+        "SELECT * FROM findings WHERE loan_file_id = $1 ORDER BY created_at DESC",
+        loan_file_id
+    ) 
+    return [dict[r] for r in rows]

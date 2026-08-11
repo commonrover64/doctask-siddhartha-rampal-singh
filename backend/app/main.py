@@ -7,7 +7,7 @@ from app.graph.build import build_classify_graph
 from app.graph.checkpointer import get_checkpointer
 import uuid
 from contextlib import asynccontextmanager
-from app.operations import get_register, list_pending, list_facts, list_conflicts, decide_review_item
+from app.operations import get_register, list_pending, list_facts, list_conflicts, decide_review_item, check_loan_file, list_findings
 
 _classify_graph = None  # built during startup, not at module load, since it needs an await
 
@@ -240,3 +240,15 @@ async def register_endpoint(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
         return await get_register(conn, loan_file_id)
+
+@app.post("/loan-files/{loan_file_id}/check")
+async def check_endpoint(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await check_loan_file(conn, loan_file_id)
+
+@app.get("/loan-files/{loan_file_id}/findings")
+async def findings_endpoint(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await list_findings(conn, loan_file_id)

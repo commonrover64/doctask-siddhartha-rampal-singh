@@ -1,0 +1,9 @@
+# User-supplied rules, this file stands in for "the compliance checklist the user hands the system"
+
+rules:
+  - id: completeness.required_docs_present
+    stage: completeness
+    description: Every loan file must have an application, a credit report, and an appraisal on file.
+    check: required_doc_types_present
+    params:
+      required: [application, credit_report, appraisal]
