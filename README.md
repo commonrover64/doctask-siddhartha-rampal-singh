@@ -68,11 +68,17 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   now, since they depend on the compiled graph object built in main.py's
   startup event, moving them into operations.py would need a shared
   app-state pattern that felt like unnecessary complexity. 
+- rule/playbook checking: `app/rules.py` runs a
+  user-supplied playbook (`app/playbook.yaml`) against a loan file,
+  one findings row per rule per stage (completeness, accuracy,
+  consistency, regulatory), always written even when clean, so "no
+  findings" is a real queryable result. Four rules implemented:
+  required doc types present, loan amount consistency after
+  amendments, embedded-instruction scanning, appraisal recency window.
 
 ## What's not built yet
 
-- Rule/playbook checking (movement 2)
-- Incremental updates on new document arrival (movement 3)
+- Incremental updates on new document arrival
 - Automated tests
 - Frontend
 
