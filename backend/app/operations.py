@@ -121,4 +121,4 @@ async def list_findings(conn, loan_file_id: str):
         "SELECT * FROM findings WHERE loan_file_id = $1 ORDER BY created_at DESC",
         loan_file_id
     ) 
-    return [dict[r] for r in rows]
+    return [dict(r) for r in rows]
