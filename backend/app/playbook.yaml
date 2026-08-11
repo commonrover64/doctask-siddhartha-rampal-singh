@@ -7,3 +7,20 @@ rules:
     check: required_doc_types_present
     params:
       required: [application, credit_report, appraisal]
+
+  - id: accuracy.loan_amount_consistent
+    stage: accuracy
+    description: If an amendment exists, loan_amount must not have an unresolved conflict.
+    check: loan_amount_consistent
+
+  - id: consistency.no_embedded_instructions
+    stage: consistency
+    description: No document should contain text attempting to direct the system's behavior.
+    check: no_embedded_instructions
+  
+  - id: regulatory.appraisal_recency
+    stage: regulatory
+    description: Appraisal date must be within 120 days of application date.
+    check: appraisal_recency
+    params:
+      max_days: 120
