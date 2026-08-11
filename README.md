@@ -60,12 +60,19 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   rather than custom save/resume logic. thread_id = run_id, a `runs`
   table records the run_id before the graph starts so it survives a
   crash even if the process dies before responding to the request.
+- **MCP server** (`app/mcp_server.py`) exposes register/facts/conflicts
+  reads and the review-decision gate as tools, both REST and MCP call
+  into the same `app/operations.py` functions, so a human via `/docs`
+  and a program via MCP get identical behavior with no duplicated logic.
+  Known gap: `process_document` and `resume_run` remain REST-only for
+  now, since they depend on the compiled graph object built in main.py's
+  startup event, moving them into operations.py would need a shared
+  app-state pattern that felt like unnecessary complexity. 
 
 ## What's not built yet
 
 - Rule/playbook checking (movement 2)
 - Incremental updates on new document arrival (movement 3)
-- MCP server
 - Automated tests
 - Frontend
 
