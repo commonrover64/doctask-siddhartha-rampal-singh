@@ -7,6 +7,7 @@ from app.graph.build import build_classify_graph
 from app.graph.checkpointer import get_checkpointer
 import uuid
 from contextlib import asynccontextmanager
+from app.operations import get_register, list_pending, list_facts, list_conflicts, decide_review_item
 
 _classify_graph = None  # built during startup, not at module load, since it needs an await
 
@@ -211,123 +212,31 @@ async def _persist_pipeline_result(conn, document_id, loan_file_id, result, exis
             )
 
 @app.get("/loan-files/{loan_file_id}/facts")
-async def list_facts(loan_file_id: str):
+async def facts_endpoint(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT field_name, field_value, quote, document_id FROM extracted_facts WHERE loan_file_id = $1 ORDER BY extracted_at",
-            loan_file_id,
-        )
-    return [dict(r) for r in rows]
+        return await list_facts(conn, loan_file_id)
 
 @app.get("/loan-files/{loan_file_id}/conflicts")
-async def list_conflicts(loan_file_id: str):
+async def conflicts_endpoint(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """SELECT * FROM conflicts WHERE loan_file_id = $1 ORDER BY opened_at""",
-            loan_file_id,
-        )
-    return [dict(r) for r in rows]
+        return await list_conflicts(conn, loan_file_id)
 
 @app.get("/review/{loan_file_id}/pending")
-async def list_pending(loan_file_id: str):
+async def pending_endpoint(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """SELECT * FROM review_queue WHERE loan_file_id = $1 AND status = 'pending' ORDER BY created_at""",
-            loan_file_id,
-        )
-    return [dict(r) for r in rows]
+        return await list_pending(conn, loan_file_id)
 
 @app.post("/review/{item_id}/decide")
-async def decide_review_item(item_id: str, decision: ReviewDecision):
+async def decide_endpoint(item_id: str, decision: ReviewDecision):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # everything inside this transaction either all commits or all
-        # rolls back together, and the FOR UPDATE lock below stays held
-        # for the whole block, not just the one SELECT
-        async with conn.transaction():
-            item = await conn.fetchrow(
-                "SELECT * FROM review_queue WHERE item_id = $1 FOR UPDATE",
-                item_id,
-            )
-
-            if item is None:
-                return {"error": "review item not found"}
-            if item["status"] != "pending":
-                # someone already decided this item, don't apply a second
-                # decision on top of it
-                return {"error": f"item already {item['status']}"}
-
-            if decision.decision == "reject":
-                await conn.execute(
-                    "UPDATE review_queue SET status = 'rejected', decided_at = now() WHERE item_id = $1",
-                    item_id,
-                )
-                return {"item_id": item_id, "status": "rejected"}
-
-            # approve path: figure out which fact_id actually wins
-            if item["item_type"] == "register_update":
-                # no conflict involved, only one fact to choose from
-                chosen_fact_id = item["ref_id"]
-            else:  # item_type == "conflict"
-                conflict = await conn.fetchrow(
-                    "SELECT * FROM conflicts WHERE conflict_id = $1",
-                    item["ref_id"],
-                )
-                # reviewer picks which side of the conflict wins, defaults
-                # to the newer value if they didn't specify
-                keep = decision.keep or "new"
-                chosen_fact_id = conflict["fact_id_new"] if keep == "new" else conflict["fact_id_old"]
-                await conn.execute(
-                    "UPDATE conflicts SET status = 'resolved' WHERE conflict_id = $1",
-                    item["ref_id"],
-                )
-
-            # whatever was in the register before, for the audit trail below
-            old = await conn.fetchrow(
-                "SELECT fact_id FROM register WHERE loan_file_id = $1 AND field_name = $2",
-                item["loan_file_id"], item["field_name"],
-            )
-
-            # ON CONFLICT DO UPDATE: first approval for this field inserts
-            # a fresh row, any later approval just overwrites it, register
-            # only ever holds the CURRENT accepted value
-            await conn.execute(
-                """INSERT INTO register (loan_file_id, field_name, fact_id, updated_at)
-                   VALUES ($1, $2, $3, now())
-                   ON CONFLICT (loan_file_id, field_name) DO UPDATE SET fact_id = $3, updated_at = now()""",
-                item["loan_file_id"], item["field_name"], chosen_fact_id,
-            )
-
-            # append-only, this row is never touched again, it's what lets
-            # you answer "what changed, when, from what" without guessing
-            await conn.execute(
-                """INSERT INTO register_history (loan_file_id, field_name, old_fact_id, new_fact_id)
-                   VALUES ($1, $2, $3, $4)""",
-                item["loan_file_id"], item["field_name"],
-                old["fact_id"] if old else None, chosen_fact_id,
-            )
-
-            await conn.execute(
-                "UPDATE review_queue SET status = 'approved', decided_at = now() WHERE item_id = $1",
-                item_id,
-            )
-
-    return {
-        "item_id": item_id, 
-        "status": "approved"
-    }
-
+        return await decide_review_item(conn, item_id, decision)
+    
 @app.get("/loan-files/{loan_file_id}/register")
-async def get_register(loan_file_id: str):
+async def register_endpoint(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """SELECT r.field_name, ef.field_value, ef.quote, r.updated_at
-               FROM register r JOIN extracted_facts ef ON ef.fact_id = r.fact_id
-               WHERE r.loan_file_id = $1 ORDER BY r.field_name""",
-            loan_file_id,
-        )
-    return [dict(r) for r in rows]
+        return await get_register(conn, loan_file_id)
