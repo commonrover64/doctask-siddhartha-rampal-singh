@@ -18,12 +18,16 @@ langchain-core==1.5.3
 langchain-protocol==0.0.18
 langgraph==1.2.10
 langgraph-checkpoint==4.2.0
+langgraph-checkpoint-postgres==3.1.2
 langgraph-prebuilt==1.1.0
 langgraph-sdk==0.4.2
 langsmith==0.10.17
 orjson==3.11.9
 ormsgpack==1.12.2
 packaging==26.3
+psycopg==3.3.4
+psycopg-binary==3.3.4
+psycopg-pool==3.3.1
 pydantic==2.13.4
 pydantic_core==2.46.4
 python-dotenv==1.2.2

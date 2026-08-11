@@ -1,12 +1,23 @@
 from fastapi import FastAPI
 from app.db import get_pool
-from app.models.schemas import LoanFileCreate
+from app.schemas import LoanFileCreate, ReviewDecision
 import hashlib
 from fastapi import UploadFile
 from app.graph.build import build_classify_graph
-from app.schemas import ReviewDecision
+from app.graph.checkpointer import get_checkpointer
+import uuid
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Loan File Intelligence System")
+_classify_graph = None  # built during startup, not at module load, since it needs an await
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _classify_graph
+    checkpointer = await get_checkpointer()
+    _classify_graph = build_classify_graph(checkpointer)
+    yield
+
+app = FastAPI(title="Loan File Intelligence System", lifespan=lifespan)
 
 @app.get("/health")
 async def health():
@@ -101,111 +112,103 @@ async def list_documents(loan_file_id: str):
         )
     return [dict(r) for r in rows]
 
-_classify_graph = build_classify_graph()
-
 @app.post("/documents/{document_id}/process")
 async def process_document(document_id: str):
+    run_id = str(uuid.uuid4())  # generated before the graph even starts
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT raw_text, loan_file_id FROM documents WHERE document_id = $1", document_id)
+            "SELECT raw_text, loan_file_id FROM documents WHERE document_id = $1", document_id
+        )
         if row is None:
-            return {
-                "error": "document not found"
-            }
+            return {"error": "document not found"}
         loan_file_id = row["loan_file_id"]
 
-        # fetch the MOST RECENT fact per field_name for this loan file,
-        # this is what reconcile_facts compares against
-        existing_rows = await conn.fetch(
-            """SELECT ef.fact_id, ef.field_name, ef.field_value
-            FROM register r
-            JOIN extracted_facts ef ON ef.fact_id = r.fact_id
-            WHERE r.loan_file_id = $1""", 
-            loan_file_id,
-        )
-
-        existing_facts = {
-            r["field_name"]: {
-                "fact_id": str(r["fact_id"]),
-                "field_value": r["field_value"],
-            }
-            for r in existing_rows
-        }  
-        
-        result = await _classify_graph.ainvoke({
-            "document_id": document_id,
-            "loan_file_id": str(row["loan_file_id"]),
-            "raw_text": row["raw_text"],
-            "doc_type": "",
-            "confidence": 0.0,
-            "needs_review": False,  # default, only flag_for_review flips this
-            "facts": [],
-            "existing_facts": existing_facts,
-            "conflicts": [], 
-        })
-        # .ainvoke() runs the graph start to finish and returns the final
-        # state — result["doc_type"] and result["confidence"] are now
-        # whatever classify_doc set them to.
-
         await conn.execute(
-            "UPDATE documents SET doc_type = $1, doc_type_confidence = $2, needs_review = $3 WHERE document_id = $4",
-            result["doc_type"], result["confidence"], result["needs_review"], document_id,
-        )
+            "INSERT INTO runs (run_id, document_id, loan_file_id) VALUES ($1, $2, $3)",
+            run_id, document_id, loan_file_id,
+        )  # written BEFORE the graph runs, this is what survives a crash
+        print(f"run_id: {run_id}")  # your lifeline if the process dies before responding
 
-        # build a lookup from field_name -> conflict, so once we know the
-        # new fact_id (after inserting it below) we can fill in fact_id_new
-        conflicts_by_field = {
-            c["field_name"]: c for c in result["conflicts"]
-        }
+        existing_facts = await _fetch_existing_facts(conn, loan_file_id)
 
-        for field in result["facts"]:
-            # Insert this newly extracted fact as its own row, RETURNING fact_id
-            # gives us back the UUID Postgres just generated for it, we need this
-            # ID below to link a conflict to the fact that caused it.
-            fact_id = await conn.fetchval(
-                """INSERT INTO extracted_facts (document_id, loan_file_id, field_name, field_value, quote)
-                VALUES ($1, $2, $3, $4, $5) RETURNING fact_id""",
-                document_id, loan_file_id, field.get("field_name"), field.get("field_value"), field.get("quote"),
-            )
-            field_name = field.get("field_name")
+        config = {"configurable": {"thread_id": run_id}}  # thread_id is how the checkpointer identifies this run
+        result = await _classify_graph.ainvoke({
+            "document_id": document_id, "loan_file_id": str(loan_file_id),
+            "raw_text": row["raw_text"], "doc_type": "", "confidence": 0.0,
+            "needs_review": False, "facts": [], "existing_facts": existing_facts, "conflicts": [],
+        }, config=config)
 
-            # reconcile_facts (inside the graph) already decided WHICH fields
-            # conflict, but it ran before this fact existed in the database, so
-            # it couldn't know this fact's fact_id yet. Look up by field_name to
-            # find the conflict this specific fact belongs to, if any.
-            conflict = conflicts_by_field.get(field_name)
-            if conflict:
-                conflict_id = await conn.fetchval(
-                    """INSERT INTO conflicts (loan_file_id, field_name, fact_id_old, fact_id_new)
-                    VALUES ($1, $2, $3, $4) RETURNING conflict_id""",
-                    loan_file_id, field_name, conflict["fact_id_old"], fact_id,
-                )
-                await conn.execute(
-                    """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
-                    VALUES ($1, 'conflict', $2, $3)""",
-                    loan_file_id, conflict_id, field_name,
-                )
-            else:
-                prior = existing_facts.get(field_name)
-                if prior is None:
-                    # brand new field, nothing in the register yet, needs approval to create the first entry
-                    await conn.execute(
-                        """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
-                        VALUES ($1, 'register_update', $2, $3)""",
-                        loan_file_id, fact_id, field_name,
-                    )
-                # else: prior exists and matches (no conflict was raised), nothing
-                # changed, nothing to review, this is what makes an update cost
-                # like an update instead of a full re-review every time
+        await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
+        await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
+
     return {
-        "document_id": document_id,
-        "doc_type": result["doc_type"],
-        "confidence": result["confidence"],
-        "needs_review": result["needs_review"],
-        "facts": result["facts"],
-        "conflicts": result["conflicts"],
+        "run_id": run_id, 
+        **result
     }
+
+@app.post("/runs/{run_id}/resume")
+async def resume_run(run_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        run_row = await conn.fetchrow("SELECT * FROM runs WHERE run_id = $1", run_id)
+        if run_row is None:
+            return {"error": "run not found"}
+        if run_row["status"] == "completed":
+            return {"error": "run already completed, nothing to resume"}
+
+        document_id, loan_file_id = run_row["document_id"], run_row["loan_file_id"]
+        existing_facts = await _fetch_existing_facts(conn, loan_file_id)
+
+        config = {"configurable": {"thread_id": run_id}}  # same thread_id, resumes instead of starting fresh
+        result = await _classify_graph.ainvoke(None, config=config)  # None input = continue from last checkpoint
+
+        await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
+        await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
+
+    return {"run_id": run_id, **result}
+
+async def _fetch_existing_facts(conn, loan_file_id):
+    rows = await conn.fetch(
+        """SELECT ef.fact_id, ef.field_name, ef.field_value
+           FROM register r JOIN extracted_facts ef ON ef.fact_id = r.fact_id
+           WHERE r.loan_file_id = $1""",
+        loan_file_id,
+    )
+    return {r["field_name"]: {"fact_id": str(r["fact_id"]), "field_value": r["field_value"]} for r in rows}
+
+async def _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts):
+    await conn.execute(
+        "UPDATE documents SET doc_type = $1, doc_type_confidence = $2, needs_review = $3 WHERE document_id = $4",
+        result["doc_type"], result["confidence"], result["needs_review"], document_id,
+    )
+    conflicts_by_field = {c["field_name"]: c for c in result["conflicts"]}  # lookup by field for the loop below
+
+    for field in result["facts"]:
+        field_name = field.get("field_name")
+        fact_id = await conn.fetchval(
+            """INSERT INTO extracted_facts (document_id, loan_file_id, field_name, field_value, quote)
+               VALUES ($1, $2, $3, $4, $5) RETURNING fact_id""",
+            document_id, loan_file_id, field_name, field.get("field_value"), field.get("quote"),
+        )
+        conflict = conflicts_by_field.get(field_name)
+        if conflict:
+            conflict_id = await conn.fetchval(
+                """INSERT INTO conflicts (loan_file_id, field_name, fact_id_old, fact_id_new)
+                   VALUES ($1, $2, $3, $4) RETURNING conflict_id""",
+                loan_file_id, field_name, conflict["fact_id_old"], fact_id,
+            )
+            await conn.execute(
+                """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
+                   VALUES ($1, 'conflict', $2, $3)""",
+                loan_file_id, conflict_id, field_name,
+            )
+        elif field_name not in existing_facts:  # brand new field, needs approval before first entry
+            await conn.execute(
+                """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
+                   VALUES ($1, 'register_update', $2, $3)""",
+                loan_file_id, fact_id, field_name,
+            )
 
 @app.get("/loan-files/{loan_file_id}/facts")
 async def list_facts(loan_file_id: str):
