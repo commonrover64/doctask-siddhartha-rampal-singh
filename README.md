@@ -75,10 +75,15 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   findings" is a real queryable result. Four rules implemented:
   required doc types present, loan amount consistency after
   amendments, embedded-instruction scanning, appraisal recency window.
+- watched directory: `app/watcher.py` watches
+  `watched_incoming/<loan_file_id>/`, on a new `.txt` file, ingests it
+  with the same content-hash dedup as the upload endpoint and runs
+  the pipeline on just that one document, not the whole loan file.
+  Shares `process_document_op` with the REST `/process` endpoint via
+  `app/operations.py`, so both entry points behave identically.
 
 ## What's not built yet
 
-- Incremental updates on new document arrival
 - Automated tests
 - Frontend
 
@@ -105,12 +110,18 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   could be reviewed together. `embedding vector(...)` is deferred
   entirely until an embedding model is chosen, to avoid hardcoding a
   vector dimension before it's needed.
-  - **Reconciliation compares against only the most recent fact per field,
-  not the full history.** Simpler to reason about, and matches the
-  assignment's framing of "does this new document contradict what the
-  register currently says", not "does it contradict anything ever seen."
-  Older disagreeing facts stay in `extracted_facts` regardless, nothing
-  is lost, just not actively compared against.
+- **Reconciliation originally only compared new facts against the
+  approved register, not against other pending review items.**
+  Building the watcher and feeding it several documents for the same
+  loan file surfaced this: multiple documents mentioning the same
+  unapproved field each spawned their own `register_update` item
+  instead of joining the one already waiting. Fixed by having
+  `_fetch_existing_facts` also check pending `register_update` items,
+  and by superseding a pending item into a real conflict if a later
+  document disagrees with it before a human ever saw it.
+  `extracted_facts` stayed intentionally append-only throughout, the
+  fix was entirely in what counts as "the current candidate value" for
+  reconciliation, not in the fact history itself.
 
 ## Repo layout
 
