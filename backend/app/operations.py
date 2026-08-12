@@ -5,7 +5,6 @@ program using MCP always get identical behavior."""
 
 from app.rules import run_playbook
 import uuid
-from app.graph.build import build_classify_graph
 from langgraph.errors import EmptyInputError
 
 _graph_ref = {} # holds the compiled graph, set once from main.py startup
@@ -76,19 +75,45 @@ async def resume_run_op(pool, run_id: str):
 
 async def _fetch_existing_facts(conn, loan_file_id):
     rows = await conn.fetch(
-        """SELECT ef.fact_id, ef.field_name, ef.field_value
+        """SELECT r.field_name, ef.fact_id, ef.field_value
            FROM register r JOIN extracted_facts ef ON ef.fact_id = r.fact_id
            WHERE r.loan_file_id = $1""",
         loan_file_id,
     )
-    return {r["field_name"]: {"fact_id": str(r["fact_id"]), "field_value": r["field_value"]} for r in rows}
+    existing = {
+        r["field_name"]: {"fact_id": str(r["fact_id"]), "field_value": r["field_value"], "pending_item_id": None}
+        for r in rows
+    }  # approved values, these always win over pending ones below
+
+    pending_rows = await conn.fetch(
+        """SELECT rq.item_id, rq.field_name, ef.fact_id, ef.field_value
+           FROM review_queue rq JOIN extracted_facts ef ON ef.fact_id = rq.ref_id
+           WHERE rq.loan_file_id = $1 AND rq.item_type = 'register_update' AND rq.status = 'pending'
+           ORDER BY rq.created_at DESC""",
+        loan_file_id,
+    )
+    for r in pending_rows:
+        if r["field_name"] not in existing:  # don't override an approved value with a pending one
+            existing[r["field_name"]] = {
+                "fact_id": str(r["fact_id"]), "field_value": r["field_value"],
+                "pending_item_id": str(r["item_id"]),  # lets the caller supersede this if it turns into a conflict
+            }
+    return existing
 
 async def _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts):
     await conn.execute(
         "UPDATE documents SET doc_type = $1, doc_type_confidence = $2, needs_review = $3 WHERE document_id = $4",
         result["doc_type"], result["confidence"], result["needs_review"], document_id,
     )
-    conflicts_by_field = {c["field_name"]: c for c in result["conflicts"]}  # lookup by field for the loop below
+    conflicts_by_field = {c["field_name"]: c for c in result["conflicts"]}
+
+    fields_with_open_conflict = {
+        r["field_name"] for r in await conn.fetch(
+            """SELECT field_name FROM review_queue
+               WHERE loan_file_id = $1 AND item_type = 'conflict' AND status = 'pending'""",
+            loan_file_id,
+        )
+    }  # already disputed, dont pile on more review items for these
 
     for field in result["facts"]:
         field_name = field.get("field_name")
@@ -96,25 +121,37 @@ async def _persist_pipeline_result(conn, document_id, loan_file_id, result, exis
             """INSERT INTO extracted_facts (document_id, loan_file_id, field_name, field_value, quote)
                VALUES ($1, $2, $3, $4, $5) RETURNING fact_id""",
             document_id, loan_file_id, field_name, field.get("field_value"), field.get("quote"),
-        )
+        )  # always recorded, append-only, regardless of what happens below
+
+        if field_name in fields_with_open_conflict:
+            continue  # fact recorded, but no new review item, human already has this field queued
+
         conflict = conflicts_by_field.get(field_name)
+        prior = existing_facts.get(field_name)
+
         if conflict:
             conflict_id = await conn.fetchval(
                 """INSERT INTO conflicts (loan_file_id, field_name, fact_id_old, fact_id_new)
                    VALUES ($1, $2, $3, $4) RETURNING conflict_id""",
                 loan_file_id, field_name, conflict["fact_id_old"], fact_id,
             )
+            if prior and prior.get("pending_item_id"):
+                await conn.execute(
+                    "UPDATE review_queue SET status = 'superseded', decided_at = now() WHERE item_id = $1",
+                    prior["pending_item_id"],
+                )  # old pending item folded into this conflict, no longer stands alone
             await conn.execute(
                 """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
                    VALUES ($1, 'conflict', $2, $3)""",
                 loan_file_id, conflict_id, field_name,
             )
-        elif field_name not in existing_facts:  # brand new field, needs approval before first entry
+        elif prior is None:
             await conn.execute(
                 """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
                    VALUES ($1, 'register_update', $2, $3)""",
                 loan_file_id, fact_id, field_name,
-            )
+            )  # brand new field, nothing pending or approved yet
+        # else: prior exists (approved or pending) and agrees, no new item, this is the actual fix
     
 async def get_register(conn, loan_file_id: str):
     rows = await conn.fetch(
