@@ -91,7 +91,6 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
 
 - **Groq instead of Anthropic for the LLM calls.** Free tier, no card
   required, sufficient for structured extraction/classification tasks.
-  The assignment doesn't mandate a specific model provider.
 - **Migrations are versioned `.sql` files in `db/migrations/`, applied by
   a Python runner (`app/migrate.py`)** A `schema_migrations` table tracks what's already applied so
   the runner is safe to re-run. Every migration uses
