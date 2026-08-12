@@ -6,6 +6,7 @@ program using MCP always get identical behavior."""
 from app.rules import run_playbook
 import uuid
 from app.graph.build import build_classify_graph
+from langgraph.errors import EmptyInputError
 
 _graph_ref = {} # holds the compiled graph, set once from main.py startup
 
@@ -34,7 +35,7 @@ async def process_document_op(pool, document_id: str):
         existing_facts = await _fetch_existing_facts(conn, loan_file_id)
 
         config = {"configurable": {"thread_id": run_id}}  # thread_id is how the checkpointer identifies this run
-        result = await _graph_ref.ainvoke({
+        result = await _graph_ref["graph"].ainvoke({
             "document_id": document_id, "loan_file_id": str(loan_file_id),
             "raw_text": row["raw_text"], "doc_type": "", "confidence": 0.0,
             "needs_review": False, "facts": [], "existing_facts": existing_facts, "conflicts": [],
@@ -60,7 +61,13 @@ async def resume_run_op(pool, run_id: str):
         existing_facts = await _fetch_existing_facts(conn, loan_file_id)
 
         config = {"configurable": {"thread_id": run_id}}  # same thread_id, resumes instead of starting fresh
-        result = await _graph_ref.ainvoke(None, config=config)  # None input = continue from last checkpoint
+
+        try:
+            result = await _graph_ref["graph"].ainvoke(None, config=config) # None input = continue from last checkpoint
+        except EmptyInputError:
+            return {
+                "error": "no checkpoint found for this run_id",
+            }
 
         await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
         await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
