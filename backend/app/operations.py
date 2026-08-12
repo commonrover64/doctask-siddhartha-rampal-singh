@@ -4,7 +4,111 @@ both thin wrappers around these functions, so a human using /docs and a
 program using MCP always get identical behavior."""
 
 from app.rules import run_playbook
+import uuid
+from app.graph.build import build_classify_graph
 
+_graph_ref = {} # holds the compiled graph, set once from main.py startup
+
+def set_graph(graph):
+    _graph_ref["graph"] = graph
+
+async def process_document_op(pool, document_id: str):
+    run_id = str(uuid.uuid4())
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT raw_text, loan_file_id FROM documents WHERE document_id = $1", 
+            document_id
+        )
+        if row is None:
+            return {
+                "error": "document not found"
+            }
+        loan_file_id = row["loan_file_id"]
+
+        await conn.execute(
+            "INSERT INTO runs (run_id, document_id, loan_file_id) VALUES ($1, $2, $3)",
+            run_id, document_id, loan_file_id,
+        )  # written BEFORE the graph runs, this is what survives a crash
+        print(f"run_id: {run_id}")  # your lifeline if the process dies before responding
+
+        existing_facts = await _fetch_existing_facts(conn, loan_file_id)
+
+        config = {"configurable": {"thread_id": run_id}}  # thread_id is how the checkpointer identifies this run
+        result = await _classify_graph.ainvoke({
+            "document_id": document_id, "loan_file_id": str(loan_file_id),
+            "raw_text": row["raw_text"], "doc_type": "", "confidence": 0.0,
+            "needs_review": False, "facts": [], "existing_facts": existing_facts, "conflicts": [],
+        }, config=config)
+
+        await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
+        await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
+
+    return {
+        "run_id": run_id, 
+        **result
+    }
+
+async def resume_run_op(pool, run_id: str):
+    async with pool.acquire() as conn:
+        run_row = await conn.fetchrow("SELECT * FROM runs WHERE run_id = $1", run_id)
+        if run_row is None:
+            return {"error": "run not found"}
+        if run_row["status"] == "completed":
+            return {"error": "run already completed, nothing to resume"}
+
+        document_id, loan_file_id = run_row["document_id"], run_row["loan_file_id"]
+        existing_facts = await _fetch_existing_facts(conn, loan_file_id)
+
+        config = {"configurable": {"thread_id": run_id}}  # same thread_id, resumes instead of starting fresh
+        result = await _graph_ref.ainvoke(None, config=config)  # None input = continue from last checkpoint
+
+        await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
+        await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
+
+    return {"run_id": run_id, **result}
+
+async def _fetch_existing_facts(conn, loan_file_id):
+    rows = await conn.fetch(
+        """SELECT ef.fact_id, ef.field_name, ef.field_value
+           FROM register r JOIN extracted_facts ef ON ef.fact_id = r.fact_id
+           WHERE r.loan_file_id = $1""",
+        loan_file_id,
+    )
+    return {r["field_name"]: {"fact_id": str(r["fact_id"]), "field_value": r["field_value"]} for r in rows}
+
+async def _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts):
+    await conn.execute(
+        "UPDATE documents SET doc_type = $1, doc_type_confidence = $2, needs_review = $3 WHERE document_id = $4",
+        result["doc_type"], result["confidence"], result["needs_review"], document_id,
+    )
+    conflicts_by_field = {c["field_name"]: c for c in result["conflicts"]}  # lookup by field for the loop below
+
+    for field in result["facts"]:
+        field_name = field.get("field_name")
+        fact_id = await conn.fetchval(
+            """INSERT INTO extracted_facts (document_id, loan_file_id, field_name, field_value, quote)
+               VALUES ($1, $2, $3, $4, $5) RETURNING fact_id""",
+            document_id, loan_file_id, field_name, field.get("field_value"), field.get("quote"),
+        )
+        conflict = conflicts_by_field.get(field_name)
+        if conflict:
+            conflict_id = await conn.fetchval(
+                """INSERT INTO conflicts (loan_file_id, field_name, fact_id_old, fact_id_new)
+                   VALUES ($1, $2, $3, $4) RETURNING conflict_id""",
+                loan_file_id, field_name, conflict["fact_id_old"], fact_id,
+            )
+            await conn.execute(
+                """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
+                   VALUES ($1, 'conflict', $2, $3)""",
+                loan_file_id, conflict_id, field_name,
+            )
+        elif field_name not in existing_facts:  # brand new field, needs approval before first entry
+            await conn.execute(
+                """INSERT INTO review_queue (loan_file_id, item_type, ref_id, field_name)
+                   VALUES ($1, 'register_update', $2, $3)""",
+                loan_file_id, fact_id, field_name,
+            )
+    
 async def get_register(conn, loan_file_id: str):
     rows = await conn.fetch(
         """SELECT r.field_name, ef.field_value, ef.quote, r.updated_at
