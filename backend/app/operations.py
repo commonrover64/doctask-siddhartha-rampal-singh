@@ -34,7 +34,7 @@ async def process_document_op(pool, document_id: str):
         existing_facts = await _fetch_existing_facts(conn, loan_file_id)
 
         config = {"configurable": {"thread_id": run_id}}  # thread_id is how the checkpointer identifies this run
-        result = await _classify_graph.ainvoke({
+        result = await _graph_ref.ainvoke({
             "document_id": document_id, "loan_file_id": str(loan_file_id),
             "raw_text": row["raw_text"], "doc_type": "", "confidence": 0.0,
             "needs_review": False, "facts": [], "existing_facts": existing_facts, "conflicts": [],
