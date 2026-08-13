@@ -6,6 +6,7 @@ program using MCP always get identical behavior."""
 from app.rules import run_playbook
 import uuid
 from langgraph.errors import EmptyInputError
+from app.db import loan_file_lock
 
 _graph_ref = {} # holds the compiled graph, set once from main.py startup
 
@@ -14,17 +15,18 @@ def set_graph(graph):
 
 async def process_document_op(pool, document_id: str):
     run_id = str(uuid.uuid4())
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
+    async with pool.acquire() as lookup_conn:  # quick lookup before we know which lock to take
+        row = await lookup_conn.fetchrow(
             "SELECT raw_text, loan_file_id FROM documents WHERE document_id = $1", 
             document_id
         )
-        if row is None:
-            return {
-                "error": "document not found"
-            }
-        loan_file_id = row["loan_file_id"]
+    if row is None:
+        return {
+            "error": "document not found"
+        }
+    loan_file_id = row["loan_file_id"]
 
+    async with loan_file_lock(str(loan_file_id)) as conn:   # serializes against other runs on THIS loan file only
         await conn.execute(
             "INSERT INTO runs (run_id, document_id, loan_file_id) VALUES ($1, $2, $3)",
             run_id, document_id, loan_file_id,
@@ -49,28 +51,30 @@ async def process_document_op(pool, document_id: str):
     }
 
 async def resume_run_op(pool, run_id: str):
-    async with pool.acquire() as conn:
-        run_row = await conn.fetchrow("SELECT * FROM runs WHERE run_id = $1", run_id)
+    async with pool.acquire() as lookup_conn:
+        run_row = await lookup_conn.fetchrow("SELECT * FROM runs WHERE run_id = $1", run_id)
         if run_row is None:
             return {"error": "run not found"}
         if run_row["status"] == "completed":
             return {"error": "run already completed, nothing to resume"}
 
         document_id, loan_file_id = run_row["document_id"], run_row["loan_file_id"]
-        existing_facts = await _fetch_existing_facts(conn, loan_file_id)
 
-        config = {"configurable": {"thread_id": run_id}}  # same thread_id, resumes instead of starting fresh
+        async with loan_file_lock(str(loan_file_id)) as conn:
+            existing_facts = await _fetch_existing_facts(conn, loan_file_id)
 
-        try:
-            result = await _graph_ref["graph"].ainvoke(None, config=config) # None input = continue from last checkpoint
-        except EmptyInputError:
-            return {
-                "error": "no checkpoint found for this run_id",
-            }
+            config = {"configurable": {"thread_id": run_id}}  # same thread_id, resumes instead of starting fresh
 
-        await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
-        await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
+            try:
+                result = await _graph_ref["graph"].ainvoke(None, config=config) # None input = continue from last checkpoint
+            except EmptyInputError:
+                return {
+                    "error": "no checkpoint found for this run_id",
+                }
 
+            await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
+            await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
+            
     return {"run_id": run_id, **result}
 
 async def _fetch_existing_facts(conn, loan_file_id):
