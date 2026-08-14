@@ -33,33 +33,41 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
 ## What's built so far
 
 - FastAPI app with health check and Neon Postgres connection pooling
+
 - `loan_files` and `documents` tables, via versioned migrations in
   `db/migrations/` (applied with `app/migrate.py`, not by hand in a web
   editor)
+
 - Document upload endpoint with content-hash based dedup (`UNIQUE`
   constraint on `loan_file_id, content_hash`)
+
 - A LangGraph classification graph (`app/graph/`): one node calls Groq
   to classify a document's type, a conditional edge routes low-confidence
   results to a `flag_for_review` node instead of accepting a guess
   silently
+
   - Extraction (`app/graph/nodes.py::extract_facts`): pulls structured
   facts (loan_amount, income, dti_ratio, etc) from documents into an
   append-only `extracted_facts` table, each fact stores the exact quote
   it was extracted from as a citation
+
 - Reconciliation (`app/graph/nodes.py::reconcile_facts`): compares a
   newly extracted fact against the most recent fact on record for the
   same field, opens a row in `conflicts` if they disagree beyond
   tolerance instead of silently picking one. Numbers get a tolerance
   for formatting differences, everything else needs an exact match
+
 - Human review queue and register: `register` holds only approved
   facts, `review_queue` holds pending decisions, `POST
   /review/{item_id}/decide` is the single approval gate, rejecting one
   item is its own transaction and never touches siblings,
   `register_history` is an append-only audit trail
+
 - **Resumability uses LangGraph's built-in Postgres checkpointer**
   rather than custom save/resume logic. thread_id = run_id, a `runs`
   table records the run_id before the graph starts so it survives a
   crash even if the process dies before responding to the request.
+
 - **MCP server** (`app/mcp_server.py`) exposes register/facts/conflicts
   reads and the review-decision gate as tools, both REST and MCP call
   into the same `app/operations.py` functions, so a human via `/docs`
@@ -68,6 +76,7 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   now, since they depend on the compiled graph object built in main.py's
   startup event, moving them into operations.py would need a shared
   app-state pattern that felt like unnecessary complexity. 
+
 - rule/playbook checking: `app/rules.py` runs a
   user-supplied playbook (`app/playbook.yaml`) against a loan file,
   one findings row per rule per stage (completeness, accuracy,
@@ -75,6 +84,7 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   findings" is a real queryable result. Four rules implemented:
   required doc types present, loan amount consistency after
   amendments, embedded-instruction scanning, appraisal recency window.
+
 - watched directory: `app/watcher.py` watches
   `watched_incoming/<loan_file_id>/`, on a new `.txt` file, ingests it
   with the same content-hash dedup as the upload endpoint and runs
@@ -82,9 +92,15 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   Shares `process_document_op` with the REST `/process` endpoint via
   `app/operations.py`, so both entry points behave identically.
 
+- Automated tests (`tests/`): no live LLM key required, `app/llm.py`
+  has a test-only override hook. Covers embedded-instruction detection
+  (fake LLM that would comply if asked, proving safety comes from the
+  rule not the model), concurrent-run serialization on the same loan
+  file vs parallel execution on different ones, and resumability via
+  LangGraph's `interrupt_after`.
+
 ## What's not built yet
 
-- Automated tests
 - Frontend
 
 ## Key decisions made while building
@@ -138,6 +154,13 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   rather than Python's `hash()`, which is randomized per process and
   would let the watcher and API server compute different keys for the
   same loan file.
+
+- **Writing the injection test caught a real bug**: the playbook rule
+  referenced `no_embedded_instructions`, `CHECK_FUNCTIONS` was keyed
+  `no_embedding_instructions`. The mismatch meant the embedded-
+  instruction rule silently returned `inconclusive` every time instead
+  of ever running, no error, no crash, just quietly not checking
+  anything. Would not have been caught by manual testing alone.
 
 ## Repo layout
 
