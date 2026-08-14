@@ -23,6 +23,12 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Loan File Intelligence System", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Vite's default dev server port
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/health")
 async def health():
