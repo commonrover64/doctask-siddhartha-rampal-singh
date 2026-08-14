@@ -8,7 +8,19 @@ from dotenv import load_dotenv
 load_dotenv()
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
+_override = None    # set by tests only, via set_override() below, never touch in prod
+
+def set_override(fn):
+    """Test-only hook. Pass a function with the same signature as
+    complete() below, or None to go back to the real Groq call."""
+    global _override
+    _override = fn
+
 async def complete(system: str, prompt: str) -> str:
+
+    if _override is not None:
+        return await _override(system, prompt)
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             "https://api.groq.com/openai/v1/chat/completions",

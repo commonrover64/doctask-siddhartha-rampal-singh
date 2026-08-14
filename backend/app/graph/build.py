@@ -5,7 +5,7 @@ from langgraph.graph import StateGraph, END
 from app.graph.state import ClassifyState
 from app.graph.nodes import classify_doc, flag_for_review, CONFIDENCE_THRESHOLD, extract_facts, reconcile_facts
 
-def build_classify_graph(checkpointer):
+def build_classify_graph(checkpointer, interrupt_after=None):
     g = StateGraph(ClassifyState)
     g.add_node("classify_doc", classify_doc)
     g.add_node("flag_for_review", flag_for_review)
@@ -31,4 +31,5 @@ def build_classify_graph(checkpointer):
     g.add_edge("extract_facts", "reconcile_facts")
     g.add_edge("reconcile_facts", END)
     
-    return g.compile(checkpointer=checkpointer)
+    return g.compile(checkpointer=checkpointer, interrupt_after=interrupt_after)
+    # interrupt_after=None in normal use, main.py and watcher.py are unaffected, tests pass a real value to simulate a crash
