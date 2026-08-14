@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.db import get_pool
 from app.schemas import LoanFileCreate, ReviewDecision
 import hashlib
@@ -12,6 +13,12 @@ from app.operations import get_register, list_pending, list_facts, list_conflict
 async def lifespan(app: FastAPI):
     checkpointer = await get_checkpointer()
     graph = build_classify_graph(checkpointer)
+
+    # for drawing the graph  
+    # graph_png = graph.get_graph().draw_mermaid_png()
+    # with open ("graph_layout.png", "wb") as f:
+    #     f.write(graph_png)``
+
     set_graph(graph) # hands the graph to operations.py, replaces the old global _classify_graph
     yield
 

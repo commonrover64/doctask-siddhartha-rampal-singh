@@ -176,3 +176,7 @@ backend/app/
     build.py          Graph assembly and routing
 db/migrations/       Versioned schema changes, applied via app/migrate.py
 ```
+
+## Graph layout
+
+![Graph](backend/graph_layout.png)
