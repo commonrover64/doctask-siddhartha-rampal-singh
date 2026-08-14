@@ -157,6 +157,6 @@ async def check_appraisal_recency(conn, loan_file_id: str, params: dict) -> dict
 CHECK_FUNCTIONS = {
     "required_doc_types_present": check_required_doc_types_present,
     "loan_amount_consistent": check_loan_amount_consistent,
-    "no_embedding_instructions": check_no_embedded_instruction,
+    "no_embedded_instructions": check_no_embedded_instruction,
     "appraisal_recency": check_appraisal_recency,
 }
