@@ -30,6 +30,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024 # 2mb enough for plain text loan documents
+
 @app.get("/health")
 async def health():
     return {
@@ -83,16 +85,22 @@ async def list_loan_files():
     # dict before returning.
 
 @app.post("/loan-files/{loan_file_id}/documents")
-async def upload_document(loan_file_id: str, file: UploadFile):
+async def upload_document(loan_file_id: str, file: UploadFile):\
+
+    if not file.filename.lower().endswith(".txt"):
+        return {
+            "error": "only .txt files are accepted"
+        }
+
     # UploadFile is FastAPI's type for "this parameter comes from a
     # multipart file upload", not a JSON body. FastAPI automatically
     # renders a file-picker for this in /docs.
 
     content = await file.read()
-    # .read() gives raw bytes. UploadFile is a stream under the hood
-    # (so large files don't all sit in memory at once), so reading it
-    # is itself an async operation.
-
+    if len(content) > MAX_UPLOAD_BYTES:
+        return {
+            "error": f"file too large, max {MAX_UPLOAD_BYTES} bytes"
+        }
     text = content.decode("utf-8", errors="ignore")
     # Our corpus docs are plain .txt, so utf-8 decode is enough for now.
     # errors="ignore" means: if a byte doesn't decode cleanly, skip it
