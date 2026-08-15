@@ -99,6 +99,13 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   file vs parallel execution on different ones, and resumability via
   LangGraph's `interrupt_after`.
 
+- Cost tracking: `app/llm.py` records token usage and latency per call
+  in memory, drained into `cost_log` after each run, tagged by stage
+  (classify_doc, extract_facts). GET /runs/{run_id}/cost returns
+  totals grouped by stage. Groq's free tier has no per-token billing,
+  so this reports token counts and latency, not a dollar figure,
+  fabricating a cost number against a free API would be dishonest.
+
 ## What's not built yet
 
 - Frontend
@@ -161,6 +168,12 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   instruction rule silently returned `inconclusive` every time instead
   of ever running, no error, no crash, just quietly not checking
   anything. Would not have been caught by manual testing alone.
+
+- **Cost logging happens in `app/llm.py`, not inside graph nodes.**
+  Nodes were deliberately kept free of direct database access. Usage is buffered in
+  memory during a run and drained into `cost_log` by
+  `operations.py` right after the graph finishes, same place facts
+  and conflicts already get persisted, keeping that separation intact.
 
 ## Repo layout
 
