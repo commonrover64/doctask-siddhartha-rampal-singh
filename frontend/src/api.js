@@ -1,21 +1,36 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-async function request(path, options = {}) {
-    const res = await fetch(`${BASE_URL}${path}`, {
-        headers: {
-            "Content-Type": "application/json",
-        },
-        ...options,
-    });
-
-    if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`${res.status} ${path}: ${body}`); // one place errors surface, instead of every caller checking res.ok itself
-    }
-
+export async function listLoanFiles() {
+    const res = await fetch(`${BASE_URL}/loan-files`);
     return res.json();
 }
 
-export const listLoanFiles = () => request("/loan-files");
-export const getRegister = (loanFileId) =>
-    request(`/loan-files/${loanFileId}/register`);
+export async function getRegister(loanFileId) {
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/register`);
+    return res.json();
+}
+
+export async function getPendingReviews(loanFileId) {
+    const res = await fetch(`${BASE_URL}/review/${loanFileId}/pending`);
+    return res.json();
+}
+
+export async function decideReviewItem(itemId, decision, keep = null) {
+    const res = await fetch(`${BASE_URL}/review/${itemId}/decide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, keep }),
+    });
+    return res.json();
+}
+
+export async function getFindings(loanFileId) {
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/findings`);
+    return res.json();
+}
+
+
+export async function getChangelog(loanFileId) {
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/changelog`);
+    return res.json();
+}

@@ -1,24 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  --color-base: #1e1e2e;
-  --color-surface0: #313244;
-  --color-surface1: #45475a;
-  --color-text: #cdd6f4;
-  --color-subtext0: #a6adc8;
-  --color-overlay0: #6c7086;
+    --color-paper: #f4efe1; /* page background, manila folder */
+    --color-card: #fbf8f0; /* card surface, index card white */
+    --color-ink: #232323; /* text, borders, never pure black */
+    --color-ink-blue: #1d3557; /* links, secondary actions */
+    --color-stamp-green: #2f5233; /* clean / approved */
+    --color-stamp-red: #a8342a; /* violation / rejected */
+    --color-stamp-amber: #b8860b; /* pending */
+    --color-stamp-gray: #6b6b6b; /* superseded */
 
-  --color-status-clean: #a6e3a1;
-  --color-status-pending: #f9e2af;
-  --color-status-violation: #f38ba8;
-  --color-status-inconclusive: #fab387;
-  --color-accent: #94e2d5;
-
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --font-heading: "Special Elite", monospace; /* titles, tabs, stamps */
+    --font-mono:
+        "Courier Prime", monospace; /* extracted values, IDs, amounts */
+    --font-body: "Source Serif 4", serif; /* findings detail, longer text */
 }
 
 body {
-  background-color: var(--color-base);
-  color: var(--color-text);
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+}
+
+/* carbon-copy shadow, the signature effect, two faint offset layers behind
+   a card, like a triplicate paper form sitting slightly askew. box-shadow
+   with multiple layers isn't a single Tailwind utility, so it's defined
+   once here and reused via className="shadow-carbon" */
+.shadow-carbon {
+    box-shadow:
+        3px 3px 0 rgba(29, 53, 87, 0.15),
+        6px 6px 0 rgba(168, 52, 42, 0.08);
+}
+.shadow-carbon-tight {
+    box-shadow:
+        2px 2px 0 rgba(29, 53, 87, 0.15),
+        4px 4px 0 rgba(168, 52, 42, 0.08);
+    /* pressed-down look, used on hover/active */
 }
