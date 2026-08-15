@@ -174,7 +174,30 @@ async def list_pending(conn, loan_file_id: str):
         "SELECT * FROM review_queue WHERE loan_file_id = $1 AND status = 'pending' ORDER BY created_at",
         loan_file_id,
     )
-    return [dict(r) for r in rows]
+    items = []
+    for r in rows:
+        item = dict(r)
+        if item["item_type"] == "register_update":
+            fact = await conn.fetchrow(
+                "SELECT field_value, quote FROM extracted_facts WHERE fact_id = $1", item["ref_id"]
+            )
+            item["old_value"] = None  # nothing existed before this
+            item["new_value"] = fact["field_value"] if fact else None
+            item["new_quote"] = fact["quote"] if fact else None
+        else:  # conflict
+            conflict = await conn.fetchrow("SELECT * FROM conflicts WHERE conflict_id = $1", item["ref_id"])
+            old_fact = await conn.fetchrow(
+                "SELECT field_value, quote FROM extracted_facts WHERE fact_id = $1", conflict["fact_id_old"]
+            )
+            new_fact = await conn.fetchrow(
+                "SELECT field_value, quote FROM extracted_facts WHERE fact_id = $1", conflict["fact_id_new"]
+            )
+            item["old_value"] = old_fact["field_value"] if old_fact else None
+            item["old_quote"] = old_fact["quote"] if old_fact else None
+            item["new_value"] = new_fact["field_value"] if new_fact else None
+            item["new_quote"] = new_fact["quote"] if new_fact else None
+        items.append(item)
+    return items
 
 async def list_facts(conn, loan_file_id: str):
     rows = await conn.fetch(
@@ -272,8 +295,10 @@ async def check_loan_file(conn, loan_file_id: str):
     return await run_playbook(conn, loan_file_id)
 
 async def list_findings(conn, loan_file_id: str):
-    rows = await conn.fetch(
-        "SELECT * FROM findings WHERE loan_file_id = $1 ORDER BY created_at DESC",
+    rows = await conn.fetch(    # latest result per rule only, findings table itself keeps full history
+        """SELECT DISTINCT ON (rule_id) *
+           FROM findings WHERE loan_file_id = $1
+           ORDER BY rule_id, created_at DESC""",
         loan_file_id
     ) 
     return [dict(r) for r in rows]

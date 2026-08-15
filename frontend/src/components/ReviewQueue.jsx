@@ -26,6 +26,21 @@ export default function ReviewQueue({ items, onDecided }) {
                                 {item.field_name}
                             </p>
                             <StatusStamp status={item.item_type} />
+                            <div className="font-mono text-xs mt-2 space-y-1">
+                                {item.old_value !== null && (
+                                    <p className="text-stamp-red">
+                                        old: {item.old_value}
+                                    </p>
+                                )}
+                                <p className="text-stamp-green">
+                                    new: {item.new_value}
+                                </p>
+                                {item.new_quote && (
+                                    <p className="text-ink/50 italic">
+                                        "{item.new_quote}"
+                                    </p>
+                                )}
+                            </div>
                         </div>
                         <div className="flex gap-2">
                             {item.item_type === "conflict" && (
