@@ -38,7 +38,7 @@ async def classify_doc(state: dict) -> dict:
     # classification rarely needs the whole document anyway, just enough
     # to recognize what kind of document it is.
 
-    response_text = await complete(system=CLASSIFY_SYSTEM, prompt=raw_text)
+    response_text = await complete(system=CLASSIFY_SYSTEM, prompt=raw_text, stage="classify_doc")
 
     try:
         parsed = json.loads(response_text)
@@ -69,7 +69,7 @@ async def flag_for_review(state: dict) -> dict:
 
 async def extract_facts(state: dict) -> dict:
     raw_text = state["raw_text"][:6000]
-    response_text = await complete(system=EXTRACT_SYSTEM, prompt=raw_text)
+    response_text = await complete(system=EXTRACT_SYSTEM, prompt=raw_text, stage="extract_facts")
 
     try:
         parsed = json.loads(response_text)

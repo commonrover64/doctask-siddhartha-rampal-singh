@@ -7,7 +7,7 @@ from fastapi import UploadFile
 from app.graph.build import build_classify_graph
 from app.graph.checkpointer import get_checkpointer
 from contextlib import asynccontextmanager
-from app.operations import get_register, list_pending, list_facts, list_conflicts, decide_review_item, check_loan_file, list_findings, process_document_op, set_graph, resume_run_op
+from app.operations import get_register, list_pending, list_facts, list_conflicts, decide_review_item, check_loan_file, list_findings, process_document_op, set_graph, resume_run_op, list_changelog, get_cost_report
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -175,3 +175,17 @@ async def findings_endpoint(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
         return await list_findings(conn, loan_file_id)
+
+
+@app.get("/loan-files/{loan_file_id}/changelog")
+async def changelog_endpoint(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await list_changelog(conn, loan_file_id)
+
+    
+@app.get("/runs/{run_id}/cost")
+async def cost_endpoint(run_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await get_cost_report(conn, run_id)

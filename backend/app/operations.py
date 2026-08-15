@@ -7,6 +7,7 @@ from app.rules import run_playbook
 import uuid
 from langgraph.errors import EmptyInputError
 from app.db import loan_file_lock
+from app.llm import drain_usage_log
 
 _graph_ref = {} # holds the compiled graph, set once from main.py startup
 
@@ -43,6 +44,7 @@ async def process_document_op(pool, document_id: str):
         }, config=config)
 
         await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
+        await _persist_cost_log(conn, run_id)
         await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
 
     return {
@@ -73,6 +75,7 @@ async def resume_run_op(pool, run_id: str):
                 }
 
             await _persist_pipeline_result(conn, document_id, loan_file_id, result, existing_facts)
+            await _persist_cost_log(conn, run_id)
             await conn.execute("UPDATE runs SET status = 'completed', finished_at = now() WHERE run_id = $1", run_id)
             
     return {"run_id": run_id, **result}
@@ -273,4 +276,27 @@ async def list_findings(conn, loan_file_id: str):
         "SELECT * FROM findings WHERE loan_file_id = $1 ORDER BY created_at DESC",
         loan_file_id
     ) 
+    return [dict(r) for r in rows]
+
+async def list_changelog(conn, loan_file_id: str):
+    rows = await conn.fetch(
+        "SELECT * FROM register_history WHERE loan_file_id = $1 ORDER BY changed_at DESC",
+        loan_file_id,
+    )
+    return [dict(r) for r in rows]
+
+async def _persist_cost_log(conn, run_id: str):
+    for entry in drain_usage_log():
+        await conn.execute(
+            "INSERT INTO cost_log (run_id, stage, tokens_in, tokens_out, latency_ms) VALUES ($1, $2, $3, $4, $5)",
+            run_id, entry["stage"], entry["tokens_in"], entry["tokens_out"], entry["latency_ms"],
+        )
+
+async def get_cost_report(conn, run_id: str):
+    rows = await conn.fetch(
+        """SELECT stage, sum(tokens_in) tokens_in, sum(tokens_out) tokens_out,
+                  sum(latency_ms) latency_ms, count(*) call_count
+           FROM cost_log WHERE run_id = $1 GROUP BY stage ORDER BY stage""",
+        run_id,
+    )
     return [dict(r) for r in rows]
