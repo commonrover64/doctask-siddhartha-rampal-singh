@@ -11,6 +11,7 @@ import RegisterLedger from "./components/RegisterLedger";
 import ReviewQueue from "./components/ReviewQueue";
 import FindingsList from "./components/FindingsList";
 import ChangelogTicker from "./components/ChangelogTicker";
+import DocumentToolbar from "./components/DocumentToolbar";
 
 const TABS = ["Register", "Review Queue", "Findings", "Changelog"];
 
@@ -25,7 +26,7 @@ function App() {
     const [changelog, setChangelog] = useState([]);
 
     useEffect(() => {
-        listLoanFiles().then(setLoanFiles);
+        refreshLoanFiles();
     }, []);
 
     function refreshTabData() {
@@ -36,6 +37,10 @@ function App() {
         getChangelog(selectedId).then(setChangelog);
     }
 
+    function refreshLoanFiles() {
+        listLoanFiles().then(setLoanFiles);
+    }
+
     useEffect(refreshTabData, [selectedId]); // re-fetch everything when the selected loan file changes
 
     return (
@@ -44,6 +49,7 @@ function App() {
                 loanFiles={loanFiles}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                onCreated={refreshLoanFiles}
             />
 
             <div className="flex-1">
@@ -53,13 +59,18 @@ function App() {
                     </p>
                 ) : (
                     <>
+                        <DocumentToolbar
+                            loanFileId={selectedId}
+                            onDone={refreshTabData}
+                        />
+
                         <div className="flex gap-1 mb-4 border-b-2 border-ink">
                             {TABS.map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
                                     className={`px-4 py-2 font-heading text-sm border-2 border-b-0 border-ink -mb-0.5
-                    ${activeTab === tab ? "bg-card" : "bg-paper text-ink/50"}`}
+                                        ${activeTab === tab ? "bg-card" : "bg-paper text-ink/50"}`}
                                 >
                                     {tab}
                                 </button>

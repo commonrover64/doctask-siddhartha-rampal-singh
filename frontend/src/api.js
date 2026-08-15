@@ -29,8 +29,40 @@ export async function getFindings(loanFileId) {
     return res.json();
 }
 
-
 export async function getChangelog(loanFileId) {
     const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/changelog`);
+    return res.json();
+}
+
+export async function createLoanFile(borrowerName) {
+    const res = await fetch(`${BASE_URL}/loan-files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ borrower_name: borrowerName }),
+    });
+    return res.json();
+}
+
+export async function uploadDocument(loanFileId, file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/documents`, {
+        method: "POST",
+        body: formData, // no Content-Type header, the browser sets the multipart boundary itself
+    });
+    return res.json();
+}
+
+export async function processDocument(documentId) {
+    const res = await fetch(`${BASE_URL}/documents/${documentId}/process`, {
+        method: "POST",
+    });
+    return res.json();
+}
+
+export async function checkLoanFile(loanFileId) {
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/check`, {
+        method: "POST",
+    });
     return res.json();
 }
