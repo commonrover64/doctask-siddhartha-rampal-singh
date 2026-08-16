@@ -7,7 +7,11 @@ from fastapi import UploadFile
 from app.graph.build import build_classify_graph
 from app.graph.checkpointer import get_checkpointer
 from contextlib import asynccontextmanager
-from app.operations import get_register, list_pending, list_facts, list_conflicts, decide_review_item, check_loan_file, list_findings, process_document_op, set_graph, resume_run_op, list_changelog, get_cost_report
+from app.operations import (get_register, list_pending, list_facts, list_conflicts, 
+        decide_review_item, check_loan_file, list_findings, 
+        process_document_op, set_graph, resume_run_op, list_changelog, 
+        get_cost_report, get_loan_file_cost_report
+    )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -85,7 +89,7 @@ async def list_loan_files():
     # dict before returning.
 
 @app.post("/loan-files/{loan_file_id}/documents")
-async def upload_document(loan_file_id: str, file: UploadFile):\
+async def upload_document(loan_file_id: str, file: UploadFile):
 
     if not file.filename.lower().endswith(".txt"):
         return {
@@ -115,10 +119,27 @@ async def upload_document(loan_file_id: str, file: UploadFile):\
         document_id = await conn.fetchval(
             """INSERT INTO documents (loan_file_id, file_path, raw_text, content_hash)
                VALUES ($1, $2, $3, $4)
+               ON CONFLICT (loan_file_id, content_hash) DO NOTHING
                RETURNING document_id""",
             loan_file_id, file.filename, text, content_hash,
         )
-    return {"document_id": str(document_id)}
+        if document_id is None:
+            # same content already on file, tell the caller which document it already is and whether it's been processed
+            existing = await conn.fetchrow(
+                "SELECT document_id, doc_type FROM documents WHERE loan_file_id = $1 AND content_hash = $2",
+                loan_file_id, content_hash,
+            )
+            return {
+                "documenmt_id": str(existing["document_id"]),
+                "duplicate": True,
+                "already_processed": existing["doc_type"] is not None,
+            }
+
+    return {
+        "document_id": str(document_id),
+        "duplicate": False,
+        "already_processed": False,
+    }
 
 
 @app.get("/loan-files/{loan_file_id}/documents")
@@ -197,3 +218,10 @@ async def cost_endpoint(run_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
         return await get_cost_report(conn, run_id)
+
+
+@app.get("/loan-files/{loan_file_id}/cost")
+async def loan_file_cost_endpoint(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await get_loan_file_cost_report(conn, loan_file_id)
