@@ -64,17 +64,26 @@ function App() {
                             onDone={refreshTabData}
                         />
 
-                        <div className="flex gap-1 mb-4 border-b-2 border-ink">
-                            {TABS.map((tab) => (
-                                <button
-                                    key={tab}
-                                    onClick={() => setActiveTab(tab)}
-                                    className={`px-4 py-2 font-heading text-sm border-2 border-b-0 border-ink -mb-0.5
-                                        ${activeTab === tab ? "bg-card" : "bg-paper text-ink/50"}`}
-                                >
-                                    {tab}
-                                </button>
-                            ))}
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex gap-1 border-b-2 border-ink flex-1">
+                                {TABS.map((tab) => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setActiveTab(tab)}
+                                        className={`px-4 py-2 font-heading text-base border-2 border-b-0 border-ink -mb-0.5
+                                            ${activeTab === tab ? "bg-card" : "bg-paper text-ink/50"}`}
+                                    >
+                                        {tab}
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={refreshTabData}
+                                className="border-2 border-ink px-3 py-1.5 font-mono text-sm bg-card hover:bg-ink hover:text-card ml-3"
+                                title="Refresh register, review queue, findings, and changelog"
+                            >
+                                ⟳ Refresh
+                            </button>
                         </div>
 
                         {activeTab === "Register" && (

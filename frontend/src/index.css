@@ -16,6 +16,10 @@
     --font-body: "Source Serif 4", serif; /* findings detail, longer text */
 }
 
+html{
+    font-size: 130%;
+}
+
 body {
     background-color: var(--color-paper);
     color: var(--color-ink);
