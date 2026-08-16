@@ -325,3 +325,13 @@ async def get_cost_report(conn, run_id: str):
         run_id,
     )
     return [dict(r) for r in rows]
+
+async def get_loan_file_cost_report(conn, loan_file_id: str):   
+    rows = await conn.fetch(
+        """SELECT cl.stage, sum(cl.tokens_in) tokens_in, sum(cl.tokens_out) tokens_out,
+                  sum(cl.latency_ms) latency_ms, count(*) call_count
+           FROM cost_log cl JOIN runs r ON r.run_id = cl.run_id
+           WHERE r.loan_file_id = $1 GROUP BY cl.stage ORDER BY cl.stage""",
+        loan_file_id,
+    )
+    return [dict(r) for r in rows]
