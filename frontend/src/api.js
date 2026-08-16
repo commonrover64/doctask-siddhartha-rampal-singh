@@ -66,3 +66,15 @@ export async function checkLoanFile(loanFileId) {
     });
     return res.json();
 }
+
+export async function getLoanFileCost(loanFileId) {
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/cost`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+}
+
+export async function listDocuments(loanFileId) {
+  const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/documents`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}

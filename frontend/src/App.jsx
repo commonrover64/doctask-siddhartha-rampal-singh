@@ -5,6 +5,7 @@ import {
     getPendingReviews,
     getFindings,
     getChangelog,
+    getLoanFileCost,
 } from "./api";
 import FileDrawer from "./components/FileDrawer";
 import RegisterLedger from "./components/RegisterLedger";
@@ -12,8 +13,9 @@ import ReviewQueue from "./components/ReviewQueue";
 import FindingsList from "./components/FindingsList";
 import ChangelogTicker from "./components/ChangelogTicker";
 import DocumentToolbar from "./components/DocumentToolbar";
+import CostReport from "./components/CostReport";
 
-const TABS = ["Register", "Review Queue", "Findings", "Changelog"];
+const TABS = ["Register", "Review Queue", "Findings", "Changelog", "Cost"];
 
 function App() {
     const [loanFiles, setLoanFiles] = useState([]);
@@ -24,24 +26,33 @@ function App() {
     const [reviewItems, setReviewItems] = useState([]);
     const [findings, setFindings] = useState([]);
     const [changelog, setChangelog] = useState([]);
+    const [cost, setCost] = useState([]);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         refreshLoanFiles();
     }, []);
 
-    function refreshTabData() {
+    useEffect(() => {
+        refreshTabData();
+    }, [selectedId]); // re-fetch everything when the selected loan file changes
+
+    async function refreshTabData() {
         if (!selectedId) return;
-        getRegister(selectedId).then(setRegister);
-        getPendingReviews(selectedId).then(setReviewItems);
-        getFindings(selectedId).then(setFindings);
-        getChangelog(selectedId).then(setChangelog);
+        setRefreshing(true);
+        await Promise.all([
+            getRegister(selectedId).then(setRegister),
+            getPendingReviews(selectedId).then(setReviewItems),
+            getFindings(selectedId).then(setFindings),
+            getChangelog(selectedId).then(setChangelog),
+            getLoanFileCost(selectedId).then(setCost),
+        ]);
+        setRefreshing(false);
     }
 
     function refreshLoanFiles() {
         listLoanFiles().then(setLoanFiles);
     }
-
-    useEffect(refreshTabData, [selectedId]); // re-fetch everything when the selected loan file changes
 
     return (
         <div className="min-h-screen p-8 flex gap-8">
@@ -63,7 +74,6 @@ function App() {
                             loanFileId={selectedId}
                             onDone={refreshTabData}
                         />
-
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex gap-1 border-b-2 border-ink flex-1">
                                 {TABS.map((tab) => (
@@ -79,13 +89,13 @@ function App() {
                             </div>
                             <button
                                 onClick={refreshTabData}
+                                disabled={refreshing}
                                 className="border-2 border-ink px-3 py-1.5 font-mono text-sm bg-card hover:bg-ink hover:text-card ml-3"
                                 title="Refresh register, review queue, findings, and changelog"
                             >
-                                ⟳ Refresh
+                                {refreshing ? "Refreshing..." : "⟳ Refresh"}
                             </button>
                         </div>
-
                         {activeTab === "Register" && (
                             <RegisterLedger register={register} />
                         )}
@@ -101,6 +111,7 @@ function App() {
                         {activeTab === "Changelog" && (
                             <ChangelogTicker entries={changelog} />
                         )}
+                        {activeTab === "Cost" && <CostReport cost={cost} />}
                     </>
                 )}
             </div>

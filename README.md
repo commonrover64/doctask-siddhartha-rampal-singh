@@ -175,6 +175,12 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   `operations.py` right after the graph finishes, same place facts
   and conflicts already get persisted, keeping that separation intact.
 
+- **Two cost endpoints, not a duplicate**: `/runs/{id}/cost` reports
+  one run in isolation (debugging a specific execution),
+  `/loan-files/{id}/cost` sums across every run for that loan file
+  (what the UI displays, since it works in loan-file terms and never
+  holds onto individual run_ids).
+
 ## Repo layout
 
 ```
