@@ -69,13 +69,13 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   crash even if the process dies before responding to the request.
 
 - **MCP server** (`app/mcp_server.py`) exposes register/facts/conflicts
-  reads and the review-decision gate as tools, both REST and MCP call
-  into the same `app/operations.py` functions, so a human via `/docs`
-  and a program via MCP get identical behavior with no duplicated logic.
-  Known gap: `process_document` and `resume_run` remain REST-only for
-  now, since they depend on the compiled graph object built in main.py's
-  startup event, moving them into operations.py would need a shared
-  app-state pattern that felt like unnecessary complexity. 
+  reads, the review-decision gate, and document processing/resume as
+  tools, both REST and MCP call into the same `app/operations.py`
+  functions, so a human via `/docs` and a program via MCP get
+  identical behavior with no duplicated logic. The MCP server builds
+  and holds its own compiled graph at startup, same pattern the
+  watcher uses, since each process needs its own graph object in
+  memory. 
 
 - rule/playbook checking: `app/rules.py` runs a
   user-supplied playbook (`app/playbook.yaml`) against a loan file,

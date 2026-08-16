@@ -1,9 +1,15 @@
 """MCP server, the machine interface. Every tool here calls the same
 shared function main.py's REST route calls, see app/operations.py."""
 
+import asyncio
+from app.graph.checkpointer import get_checkpointer
+from app.graph.build import build_classify_graph
 from fastmcp import FastMCP
 from app.db import get_pool
-from app.operations import get_register, list_pending, list_facts, list_conflicts, decide_review_item, list_changelog, get_cost_report
+from app.operations import (
+    get_register, list_pending, list_facts, list_conflicts, decide_review_item, 
+    list_changelog, get_cost_report, process_document_op, resume_run_op, set_graph
+    )
 from app.schemas import ReviewDecision
 
 mcp = FastMCP("loanfile-agent")
@@ -64,6 +70,27 @@ async def get_cost_report_tool(run_id: str) -> list[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         return await get_cost_report(conn, run_id)
+
+@mcp.tool()
+async def process_document_tool(document_id: str) -> dict:
+    """Runs the classify/extract/reconcile pipeline on a document. Same
+    operation as REST POST /documents/{id}/process and the watcher use,
+    all three call process_document_op directly."""
+    pool = await get_pool()
+    return await process_document_op(pool, document_id)
+
+
+@mcp.tool()
+async def resume_run_tool(run_id: str) -> dict:
+    """Resumes an interrupted run from its last LangGraph checkpoint. Same
+    operation as REST POST /runs/{id}/resume."""
+    pool = await get_pool()
+    return await resume_run_op(pool, run_id)
+
+async def _startup():
+    checkpointer = await get_checkpointer()
+    graph = build_classify_graph(checkpointer)
+    set_graph(graph)
 
 if __name__ == "__main__":
     mcp.run()
