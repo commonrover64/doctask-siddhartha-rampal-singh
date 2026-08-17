@@ -25,7 +25,7 @@ echo "-- Setting up backend --"
 cd backend
 python3 -m venv venv
 source venv/bin/activate
-mkdir watched_incoming
+mkdir -p watched_incoming
 pip install -r requirements.txt --quiet
 python -m app.migrate
 
