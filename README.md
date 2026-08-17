@@ -11,28 +11,27 @@ yet, not placeholders.
 
 ## Setup
 
-Requires Python 3.12+, a Neon Postgres account (free tier works, pgvector
-supported natively), and a free Groq API key (console.groq.com, no card / payment
+Requires Docker and a free Groq API key (console.groq.com, no card / payment
 required).
 
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+1. `cp backend/.env.example backend/.env`, fill in `GROQ_API_KEY`
+2. `cp frontend/.env.example frontend/.env` (default value already points
+    at the local backend, no edit needed unless you're running the
+    backend somewhere other than `127.0.0.1:8000`)
+3. `./setup.sh`
 
-cp .env.example .env
-# fill in DATABASE_URL (from Neon) and GROQ_API_KEY (from console.groq.com)
+  This starts a local Postgres (with pgvector) in Docker, installs both
+  backend and frontend dependencies, runs every pending migration, and
+  starts both servers. Backend at http://127.0.0.1:8000/docs, frontend
+  at http://localhost:5173.
 
-python -m app.migrate   # applies db/migrations/*.sql in order
-uvicorn app.main:app --reload
-```
-
-Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
+  To also run the file watcher (automatic processing of
+  files dropped into `backend/watched_incoming/<loan_file_id>/`), in a
+  separate terminal: `cd backend && source venv/bin/activate && python -m app.watcher`
 
 ## What's built so far
 
-- FastAPI app with health check and Neon Postgres connection pooling
+- FastAPI app with health check and local connection pooling.
 
 - `loan_files` and `documents` tables, via versioned migrations in
   `db/migrations/` (applied with `app/migrate.py`, not by hand in a web
@@ -106,9 +105,14 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   so this reports token counts and latency, not a dollar figure,
   fabricating a cost number against a free API would be dishonest.
 
-## What's not built yet
+- React frontend (`frontend/`): file drawer with search and
+  pagination, tabbed loan file view (Register, Review Queue,
+  Findings, Changelog, Cost), upload with per-file status and
+  duplicate/resume detection, playbook check triggerable from the
+  UI. "Case File" design system, carbon-copy shadow cards, rubber-
+  stamp status badges, typewriter/monospace typography, deliberately
+  distinct from a generic dashboard look.
 
-- Frontend
 
 ## Key decisions made while building
 
@@ -181,19 +185,52 @@ Then open `http://127.0.0.1:8000/docs` for the interactive Swagger API.
   (what the UI displays, since it works in loan-file terms and never
   holds onto individual run_ids).
 
+- **Switched from Neon to local Docker Postgres.** Neon required a
+  manual account creation and a SQL-editor step to enable pgvector,
+  neither scriptable, which directly blocked one-command onboarding.
+  `pgvector/pgvector:pg16` ships the extension pre-installed,
+  `setup.sh` brings the container up, waits for it to actually accept
+  connections (not just for the container to start), and creates the
+  extension automatically.
+
+- **Frontend's API base URL is `VITE_API_BASE_URL` in `frontend/.env`**,
+  not hardcoded, so the frontend can point at a different backend
+  address without a code change.
+
 ## Repo layout
 
 ```
 backend/app/
-  main.py           FastAPI app and all routes
-  db.py             Neon connection pool
-  migrate.py        Migration runner
-  llm.py            Groq API client
+  main.py             FastAPI app and all routes
+  operations.py       Shared logic, called by both REST routes and MCP tools
+  db.py               Local Postgres connection pool, loan_file_lock
+  migrate.py          Migration runner
+  llm.py              Groq API client, cost logging, test override hook
+  rules.py            Playbook rule engine
+  playbook.yaml       User-supplied compliance rules
+  watcher.py          Watched-directory processor
+  mcp_server.py       MCP tools, mirrors REST routes exactly
   graph/
-    state.py        LangGraph state definition
-    nodes.py         Node functions
-    build.py          Graph assembly and routing
-db/migrations/       Versioned schema changes, applied via app/migrate.py
+    state.py            LangGraph state definition
+    nodes.py            Node functions
+    build.py             Graph assembly and routing
+    checkpointer.py      Postgres checkpointer setup
+db/migrations/          Versioned schema changes, applied via app/migrate.py
+tests/                    Injection, concurrency, resumability tests
+frontend/src/
+  api.js                  All fetch calls
+  index.css               Design tokens
+  App.jsx                  Layout shell, tab routing
+  components/              
+    StatusStamp, 
+    Card, 
+    FileDrawer, 
+    RegisterLedger,
+    ReviewQueue, 
+    FindingsList, 
+    ChangelogTicker,
+    CostReport, 
+    DocumentToolbar
 ```
 
 ## Graph layout
