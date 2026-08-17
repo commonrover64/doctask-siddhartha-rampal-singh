@@ -70,6 +70,11 @@ export default function FileDrawer({
                             setNewName(e.target.value);
                             setCreateError("");
                         }}
+                        onKeyDown={(e)=>{
+                            if (e.key === "Enter" && !creating) {
+                                handleCreate()
+                            }
+                        }}
                         placeholder="Borrower name"
                         className="border-2 border-ink px-2 py-1 font-mono text-sm"
                         autoFocus
