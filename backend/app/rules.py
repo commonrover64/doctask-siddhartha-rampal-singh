@@ -11,6 +11,7 @@ PLAYBOOK_PATH = Path(__file__).resolve().parent / "playbook.yaml"
 
 async def check_required_doc_types_present(conn, loan_file_id: str, params: dict) -> dict:
     required = params["required"]
+    one_of = params.get("one_of", [])  # at least one of these must be present, optional in the playbook
     rows = await conn.fetch(
         "SELECT DISTINCT doc_type FROM documents WHERE loan_file_id = $1", 
         loan_file_id
@@ -23,6 +24,13 @@ async def check_required_doc_types_present(conn, loan_file_id: str, params: dict
             "status": "violation",
             "detail": f"Missing required document types: {','.join(missing)}",
         }
+
+    if one_of and not any(d in present for d in one_of):
+        return {
+            "status": "violation",
+            "detail": f"Missing at least one of: {','.join(one_of)} (income verification)",
+        }
+
     return {
         "status": "clean",
         "detail": "All required document types are present.",

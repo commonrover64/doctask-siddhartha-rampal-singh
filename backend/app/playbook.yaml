@@ -7,6 +7,7 @@ rules:
     check: required_doc_types_present
     params:
       required: [application, credit_report, appraisal]
+      one_of: [pay_stub, bank_statement]
 
   - id: accuracy.loan_amount_consistent
     stage: accuracy
