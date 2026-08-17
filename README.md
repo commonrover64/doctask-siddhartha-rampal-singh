@@ -113,6 +113,17 @@ required).
   stamp status badges, typewriter/monospace typography, deliberately
   distinct from a generic dashboard look.
 
+- Loan file deletion: DELETE /loan-files/{id} cascades through every
+  related table (cost_log, review_queue, findings, conflicts,
+  register_history, register, extracted_facts, runs, documents) in
+  FK-safe order inside one transaction, confirmed in the UI before
+  firing.
+  
+- Changelog shows what actually happened, not just that a field
+  changed: approved/kept new/kept old/rejected/superseded, joined
+  through to the source document filename. register_history gained
+  an `action` column to record which decision produced each row.
+
 
 ## Key decisions made while building
 
