@@ -1,0 +1,18 @@
+UNDERWRITING NOTES
+Loan ID: LF-1001
+Underwriter: M. Alvarado
+Date: 2026-03-15
+
+Summary:
+Borrower Jane Doe applied for $250,000 purchase loan on 118 Birchwood Lane.
+Income verified via pay stub, annualized $92,000, consistent with application.
+Credit report confirms monthly debt obligations of $1,340; calculated DTI =
+1,340 / (92,000/12) = 17.5%... recalculated using full housing payment
+estimate of $1,610/mo total debt incl. new mortgage => DTI 24.8%, matches
+disclosed DTI ratio on application.
+
+Appraised value $312,000 exceeds requested loan amount; LTV = 80.1%.
+
+Final Approved Loan Amount: $250,000
+Decision: APPROVED
+Conditions: None outstanding.

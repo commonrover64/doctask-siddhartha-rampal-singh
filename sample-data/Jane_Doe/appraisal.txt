@@ -1,0 +1,17 @@
+APPRAISAL REPORT
+Appraisal Date: 2026-03-10
+Loan ID: LF-1001
+Property Address: 118 Birchwood Lane, Springfield, IL 62704
+
+Appraised Value: $312,000
+Property Type: Single Family Residence
+Square Footage: 1,850
+Year Built: 1998
+Condition Rating: Good (C3)
+
+Comparable Sales:
+  1. 122 Birchwood Lane — sold $305,000 (2026-01-15)
+  2. 89 Maple Ct — sold $318,500 (2026-02-01)
+  3. 204 Willow Ave — sold $309,000 (2025-12-20)
+
+Appraiser: Thomas R. Klein, IL License #AG-88213

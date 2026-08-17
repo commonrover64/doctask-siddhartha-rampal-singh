@@ -1,0 +1,15 @@
+PAY STATEMENT
+Employer: Springfield General Hospital
+Employee: Jane Doe
+Pay Period: 2026-02-01 to 2026-02-15
+Pay Date: 2026-02-20
+
+Gross Pay (this period): $3,538.46
+Year-to-Date Gross Pay: $14,153.84
+Annualized Gross Income: $92,000.00
+
+Federal Tax Withheld: $612.10
+State Tax Withheld: $177.15
+Net Pay: $2,489.02
+
+Position: Registered Nurse, Full-Time

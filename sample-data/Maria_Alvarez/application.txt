@@ -1,0 +1,18 @@
+LOAN APPLICATION
+Application Date: 2026-04-10
+Loan ID: LF-1003
+
+Borrower: Maria Alvarez
+SSN (last 4): 3315
+Property Address: 902 Larkspur Ave, Aurora, IL 60505
+
+Requested Loan Amount: $198,000
+Loan Term: 30 years
+Interest Rate (proposed): 6.40%
+Loan Purpose: Purchase, primary residence
+
+Stated Annual Income: $71,500
+Monthly Debt Obligations: $980
+Disclosed DTI Ratio: 22.1%
+
+Borrower Signature: /s/ Maria Alvarez   Date: 2026-04-10

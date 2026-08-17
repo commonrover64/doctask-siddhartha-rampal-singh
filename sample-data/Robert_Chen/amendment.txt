@@ -1,0 +1,17 @@
+LOAN AMENDMENT #1
+Loan ID: LF-1002
+Amendment Date: 2026-02-18
+Borrower: Robert Chen
+
+Reason for Amendment: Borrower requested increase in loan amount to cover
+updated purchase price following renegotiation with seller.
+
+Original Loan Amount: $410,000
+Revised Loan Amount: $438,000
+Revised LTV: 96.3%
+
+All other terms (rate, term, purpose) remain unchanged from the original
+application dated 2026-01-20.
+
+Approved by: Loan Officer S. Kowalski
+Borrower Acknowledgment: /s/ Robert Chen   Date: 2026-02-18

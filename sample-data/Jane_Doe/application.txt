@@ -1,0 +1,18 @@
+LOAN APPLICATION
+Application Date: 2026-03-02
+Loan ID: LF-1001
+
+Borrower: Jane Doe
+SSN (last 4): 4471
+Property Address: 118 Birchwood Lane, Springfield, IL 62704
+
+Requested Loan Amount: $250,000
+Loan Term: 30 years
+Interest Rate (proposed): 6.25%
+Loan Purpose: Purchase, primary residence
+
+Stated Annual Income: $92,000
+Monthly Debt Obligations: $1,340
+Disclosed DTI Ratio: 24.8%
+
+Borrower Signature: /s/ Jane Doe   Date: 2026-03-02

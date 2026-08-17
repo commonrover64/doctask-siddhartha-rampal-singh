@@ -1,0 +1,17 @@
+CREDIT REPORT SUMMARY
+Report Date: 2026-05-07
+Loan ID: LF-1004
+Subject: David Okafor
+
+FICO Score: 718
+Open Trade Lines: 5
+Total Monthly Debt Payments (per bureau): $1,120
+  - Auto Loan: $380/mo, balance $11,600
+  - Credit Card (Visa): $240/mo, balance $3,300
+  - Student Loan: $500/mo, balance $16,900
+
+Public Records: None
+Collections: None
+Late Payments (24 mo): 0
+
+Bureau: Equifax

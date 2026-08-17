@@ -1,0 +1,15 @@
+PAY STATEMENT
+Employer: Peoria Manufacturing Co.
+Employee: David Okafor
+Pay Period: 2026-04-16 to 2026-04-30
+Pay Date: 2026-05-05
+
+Gross Pay (this period): $3,230.77
+Year-to-Date Gross Pay: $25,846.16
+Annualized Gross Income: $84,000.00
+
+Federal Tax Withheld: $528.40
+State Tax Withheld: $161.54
+Net Pay: $2,281.15
+
+Position: Production Supervisor, Full-Time

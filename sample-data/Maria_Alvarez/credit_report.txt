@@ -1,0 +1,17 @@
+CREDIT REPORT SUMMARY
+Report Date: 2026-04-11
+Loan ID: LF-1003
+Subject: Maria Alvarez
+
+FICO Score: 705
+Open Trade Lines: 4
+Total Monthly Debt Payments (per bureau): $980
+  - Auto Loan: $360/mo, balance $6,900
+  - Credit Card (Visa): $220/mo, balance $2,850
+  - Credit Card (Mastercard): $400/mo, balance $4,100
+
+Public Records: None
+Collections: None
+Late Payments (24 mo): 1 (30-day, 2025-08)
+
+Bureau: Experian

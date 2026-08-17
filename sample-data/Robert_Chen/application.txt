@@ -1,0 +1,18 @@
+LOAN APPLICATION
+Application Date: 2026-01-20
+Loan ID: LF-1002
+
+Borrower: Robert Chen
+SSN (last 4): 8820
+Property Address: 47 Cedar Ridge Dr, Naperville, IL 60540
+
+Requested Loan Amount: $410,000
+Loan Term: 30 years
+Interest Rate (proposed): 6.10%
+Loan Purpose: Purchase, primary residence
+
+Stated Annual Income: $138,000
+Monthly Debt Obligations: $1,900
+Disclosed DTI Ratio: 27.3%
+
+Borrower Signature: /s/ Robert Chen   Date: 2026-01-20

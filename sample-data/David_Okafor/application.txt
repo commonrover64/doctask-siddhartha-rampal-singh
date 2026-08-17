@@ -1,0 +1,18 @@
+LOAN APPLICATION
+Application Date: 2026-05-05
+Loan ID: LF-1004
+
+Borrower: David Okafor
+SSN (last 4): 6602
+Property Address: 331 Sycamore Ct, Peoria, IL 61614
+
+Requested Loan Amount: $276,000
+Loan Term: 30 years
+Interest Rate (proposed): 6.35%
+Loan Purpose: Purchase, primary residence
+
+Stated Annual Income: $84,000
+Monthly Debt Obligations: $1,120
+Disclosed DTI Ratio: 23.4%
+
+Borrower Signature: /s/ David Okafor   Date: 2026-05-05

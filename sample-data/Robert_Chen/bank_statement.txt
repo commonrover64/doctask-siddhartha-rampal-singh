@@ -1,0 +1,14 @@
+BANK STATEMENT
+Account Holder: Robert Chen
+Institution: First Prairie Bank
+Statement Period: 2026-01-01 to 2026-01-31
+
+Beginning Balance: $18,220.44
+Ending Balance: $21,905.10
+
+Recurring Deposits:
+  2026-01-02   Payroll Deposit — TechForward Solutions   $5,750.00
+  2026-01-16   Payroll Deposit — TechForward Solutions   $5,750.00
+
+Implied Annualized Income (biweekly payroll x 26): $149,500.00
+(Note: differs from stated annual income on application; see underwriting notes)

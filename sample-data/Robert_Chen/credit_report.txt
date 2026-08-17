@@ -1,0 +1,18 @@
+CREDIT REPORT SUMMARY
+Report Date: 2026-01-22
+Loan ID: LF-1002
+Subject: Robert Chen
+
+FICO Score: 771
+Open Trade Lines: 8
+Total Monthly Debt Payments (per bureau): $1,900
+  - Auto Loan: $520/mo, balance $14,300
+  - Credit Card (Chase): $210/mo, balance $3,400
+  - Credit Card (Discover): $170/mo, balance $1,800
+  - Personal Loan: $1,000/mo, balance $22,000
+
+Public Records: None
+Collections: None
+Late Payments (24 mo): 0
+
+Bureau: TransUnion
