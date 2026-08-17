@@ -74,7 +74,14 @@ export async function getLoanFileCost(loanFileId) {
 }
 
 export async function listDocuments(loanFileId) {
-  const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/documents`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}/documents`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+}
+
+export async function deleteLoanFile(loanFileId) {
+    const res = await fetch(`${BASE_URL}/loan-files/${loanFileId}`, {
+        method: "DELETE",
+    });
+    return res.json();
 }

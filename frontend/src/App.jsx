@@ -6,6 +6,7 @@ import {
     getFindings,
     getChangelog,
     getLoanFileCost,
+    deleteLoanFile,
 } from "./api";
 import FileDrawer from "./components/FileDrawer";
 import RegisterLedger from "./components/RegisterLedger";
@@ -54,6 +55,17 @@ function App() {
         listLoanFiles().then(setLoanFiles);
     }
 
+    async function handleDelete() {
+        const confirmed = window.confirm(
+            "Permanently delete this loan file and everything in it (documents, facts, register, history)? This cannot be undone.",
+        );
+        if (!confirmed) return;
+
+        await deleteLoanFile(selectedId);
+        setSelectedId(null);
+        refreshLoanFiles();
+    }
+
     return (
         <div className="min-h-screen p-8 flex gap-8">
             <FileDrawer
@@ -87,6 +99,12 @@ function App() {
                                     </button>
                                 ))}
                             </div>
+                            <button
+                                onClick={handleDelete}
+                                className="border-2 border-stamp-red text-stamp-red px-3 py-1.5 font-mono text-sm hover:bg-stamp-red hover:text-card ml-3"
+                            >
+                                Delete File
+                            </button>
                             <button
                                 onClick={refreshTabData}
                                 disabled={refreshing}

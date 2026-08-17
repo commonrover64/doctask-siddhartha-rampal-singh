@@ -235,7 +235,7 @@ async def decide_review_item(conn, item_id: str, decision):
                 item_id,
             )
             return {
-                "item_id": item_id, 
+                "item_id": item_id,
                 "status": "rejected"
             }
 
@@ -243,6 +243,7 @@ async def decide_review_item(conn, item_id: str, decision):
         if item["item_type"] == "register_update":
             # no conflict involved, only one fact to choose from
             chosen_fact_id = item["ref_id"]
+            action = "set"  # first time this field ever got a value, for the changelog
         else:  # item_type == "conflict"
             conflict = await conn.fetchrow(
                 "SELECT * FROM conflicts WHERE conflict_id = $1",
@@ -252,6 +253,7 @@ async def decide_review_item(conn, item_id: str, decision):
             # to the newer value if they didn't specify
             keep = decision.keep or "new"
             chosen_fact_id = conflict["fact_id_new"] if keep == "new" else conflict["fact_id_old"]
+            action = "kept_new" if keep == "new" else "kept_old"  # for the changelog
             await conn.execute(
                 "UPDATE conflicts SET status = 'resolved' WHERE conflict_id = $1",
                 item["ref_id"],
@@ -273,23 +275,24 @@ async def decide_review_item(conn, item_id: str, decision):
             item["loan_file_id"], item["field_name"], chosen_fact_id,
         )
 
-        # append-only, this row is never touched again, it's what lets
-        # you answer "what changed, when, from what" without guessing
+        # append-only, this row is never touched again, it's what lets us answer "what changed, when, from what" without guessing.
+        # action records WHICH decision produced this row (set/kept_new/
+        # kept_old), used by the changelog to describe what happened
         await conn.execute(
-            """INSERT INTO register_history (loan_file_id, field_name, old_fact_id, new_fact_id)
-                VALUES ($1, $2, $3, $4)""",
+            """INSERT INTO register_history (loan_file_id, field_name, old_fact_id, new_fact_id, action)
+                VALUES ($1, $2, $3, $4, $5)""",
             item["loan_file_id"], item["field_name"],
-            old["fact_id"] if old else None, chosen_fact_id,
+            old["fact_id"] if old else None, chosen_fact_id, action,
         )
 
         await conn.execute(
             "UPDATE review_queue SET status = 'approved', decided_at = now() WHERE item_id = $1",
             item_id,
         )
-    return {
-        "item_id": item_id, 
-        "status": "approved"
-    }
+        return {
+            "item_id": item_id,
+            "status": "approved"
+        }
 
 async def check_loan_file(conn, loan_file_id: str):
     return await run_playbook(conn, loan_file_id)
@@ -304,11 +307,46 @@ async def list_findings(conn, loan_file_id: str):
     return [dict(r) for r in rows]
 
 async def list_changelog(conn, loan_file_id: str):
-    rows = await conn.fetch(
-        "SELECT * FROM register_history WHERE loan_file_id = $1 ORDER BY changed_at DESC",
+    approvals = await conn.fetch(
+        """SELECT rh.history_id AS id, rh.field_name, rh.changed_at AS timestamp, rh.action,
+                  d.file_path AS source_file
+           FROM register_history rh
+           LEFT JOIN extracted_facts ef ON ef.fact_id = rh.new_fact_id
+           LEFT JOIN documents d ON d.document_id = ef.document_id
+           WHERE rh.loan_file_id = $1""",
         loan_file_id,
     )
-    return [dict(r) for r in rows]
+    decided = await conn.fetch(
+        """SELECT rq.item_id AS id, rq.field_name, rq.decided_at AS timestamp, rq.status,
+                  d.file_path AS source_file
+           FROM review_queue rq
+           LEFT JOIN extracted_facts ef ON ef.fact_id = (
+               -- register_update items point straight at a fact, conflict
+               -- items point at a conflict row, follow whichever applies
+               CASE WHEN rq.item_type = 'register_update' THEN rq.ref_id
+                    ELSE (SELECT fact_id_new FROM conflicts c WHERE c.conflict_id = rq.ref_id)
+               END
+           )
+           LEFT JOIN documents d ON d.document_id = ef.document_id
+           WHERE rq.loan_file_id = $1 AND rq.status IN ('rejected', 'superseded')""",
+        loan_file_id,
+    )
+
+    entries = []
+    for r in approvals:
+        label = {"set": "approved", "kept_new": "kept new value", "kept_old": "kept old value"}.get(r["action"], r["action"])
+        entries.append({
+            "id": str(r["id"]), "field_name": r["field_name"], "timestamp": r["timestamp"].isoformat(),
+            "description": f"{label}, from {r['source_file']}" if r["source_file"] else label,
+        })
+    for r in decided:
+        entries.append({
+            "id": str(r["id"]), "field_name": r["field_name"], "timestamp": r["timestamp"].isoformat(),
+            "description": f"{r['status']}, from {r['source_file']}" if r["source_file"] else r["status"],
+        })
+
+    entries.sort(key=lambda e: e["timestamp"], reverse=True)
+    return entries
 
 async def _persist_cost_log(conn, run_id: str):
     for entry in drain_usage_log():
@@ -335,3 +373,18 @@ async def get_loan_file_cost_report(conn, loan_file_id: str):
         loan_file_id,
     )
     return [dict(r) for r in rows]
+
+async def delete_loan_file(conn, loan_file_id: str):
+    async with conn.transaction():
+        # children before parents, foreign key constraints require this order
+        await conn.execute("DELETE FROM cost_log WHERE run_id IN (SELECT run_id FROM runs WHERE loan_file_id = $1)", loan_file_id)
+        await conn.execute("DELETE FROM review_queue WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM findings WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM conflicts WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM register_history WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM register WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM extracted_facts WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM runs WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM documents WHERE loan_file_id = $1", loan_file_id)
+        await conn.execute("DELETE FROM loan_files WHERE loan_file_id = $1", loan_file_id)
+    return {"deleted": loan_file_id}

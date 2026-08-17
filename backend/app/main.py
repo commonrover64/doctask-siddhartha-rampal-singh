@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from app.operations import (get_register, list_pending, list_facts, list_conflicts, 
         decide_review_item, check_loan_file, list_findings, 
         process_document_op, set_graph, resume_run_op, list_changelog, 
-        get_cost_report, get_loan_file_cost_report
+        get_cost_report, get_loan_file_cost_report, delete_loan_file
     )
 
 @asynccontextmanager
@@ -225,3 +225,9 @@ async def loan_file_cost_endpoint(loan_file_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
         return await get_loan_file_cost_report(conn, loan_file_id)
+
+@app.delete("/loan-files/{loan_file_id}")
+async def delete_loan_file_endpoint(loan_file_id: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await delete_loan_file(conn, loan_file_id)
