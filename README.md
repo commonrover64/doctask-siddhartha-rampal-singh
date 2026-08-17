@@ -197,6 +197,9 @@ required).
   not hardcoded, so the frontend can point at a different backend
   address without a code change.
 
+- **Switched from `llama-3.3-70b-versatile` to `openai/gpt-oss-120b`**
+  on Groq mid-build, the original model was decommissioned by Groq.
+
 ## Repo layout
 
 ```
