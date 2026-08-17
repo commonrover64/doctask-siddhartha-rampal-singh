@@ -99,21 +99,29 @@ async def check_no_embedded_instruction(conn, loan_file_id: str, params:dict) ->
     patterns = ["ignore previous instructions", "ignore all previous", "you are now",
                 "disregard the above", "system:", "new instructions"]
     rows = await conn.fetch(
-        "SELECT document_id, raw_text FROM documents WHERE loan_file_id = $1", loan_file_id
+        "SELECT document_id, file_path, raw_text FROM documents WHERE loan_file_id = $1", loan_file_id
     )
-    hits = []
+    document_hits = {}
 
     for row in rows:
         text_lower = (row["raw_text"] or "").lower()
-
+        matched_patterns = []
         for pattern in patterns:
             if pattern in text_lower:
-                hits.append(f"document {row['document_id']}: contains  '{pattern}'")
+                matched_patterns.append(pattern)
 
-    if hits:
+        if matched_patterns:
+            document_hits[row["file_path"]] = matched_patterns
+
+    if document_hits:
+        hits = [
+            f"document '{file_path}': contains " +
+            ", ".join(f"'{pattern}'" for pattern in patterns_found)
+            for file_path, patterns_found in document_hits.items()
+        ]
         return {
             "status": "violation",
-            "detail": "; ".join(hits)
+            "detail": "\n".join(hits)
         }
     return {
         "status": "clean",

@@ -17,7 +17,17 @@ export default function FindingsList({ findings }) {
                             <p className="font-mono text-sm font-bold">
                                 {f.rule_id}
                             </p>
-                            <p className="font-body text-sm mt-1">{f.detail}</p>
+                            <p className="font-body text-sm mt-1">
+                                {f.detail
+                                    .split(";")
+                                    .map((line, index, lines) => (
+                                        <span key={index}>
+                                            {line.trim()}
+                                            {index < lines.length - 1 && ";"}
+                                            <br />
+                                        </span>
+                                    ))}
+                            </p>
                         </div>
                         <StatusStamp status={f.status} />
                     </div>
