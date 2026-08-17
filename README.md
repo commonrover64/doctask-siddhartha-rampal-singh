@@ -18,7 +18,7 @@ required).
 2. `cp frontend/.env.example frontend/.env` (default value already points
     at the local backend, no edit needed unless you're running the
     backend somewhere other than `127.0.0.1:8000`)
-3. `./setup.sh`
+3. `sudo ./setup.sh`
 
   This starts a local Postgres (with pgvector) in Docker, installs both
   backend and frontend dependencies, runs every pending migration, and
@@ -118,7 +118,7 @@ required).
   register_history, register, extracted_facts, runs, documents) in
   FK-safe order inside one transaction, confirmed in the UI before
   firing.
-  
+
 - Changelog shows what actually happened, not just that a field
   changed: approved/kept new/kept old/rejected/superseded, joined
   through to the source document filename. register_history gained
