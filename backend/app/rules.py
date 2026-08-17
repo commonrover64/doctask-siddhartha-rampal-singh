@@ -47,7 +47,7 @@ async def run_playbook(conn, loan_file_id: str) -> list[dict]:
             # unknown check type, don't crash the whole run, report it as inconclusive so it's visible instead of silently skipped
             result = {
                 "status": "inconclusive",
-                "detail": f"Unknown check type: {rule["check"]}"
+                "detail": f"Unknown check type: {rule['check']}"
             }
         else:
             result = await check_fn(conn, loan_file_id, rule.get("params", {}))
