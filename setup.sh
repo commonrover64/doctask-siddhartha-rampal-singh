@@ -4,15 +4,20 @@ set -e
 echo "== Loan File Intelligence System setup =="
 
 if [ ! -f backend/.env ]; then
-    echo "ERROR: backend/.env not found. Copy backend/.env.example to backend/.env"
-    echo "and fill in GROQ_API_KEY (from console.groq.com) first."
-    exit 1
+  echo "ERROR: backend/.env not found. Copy backend/.env.example to backend/.env"
+  echo "and fill in GROQ_API_KEY (from console.groq.com) first."
+  exit 1
 fi
 
-echo "== Starting Postgres =="
+if [ ! -f frontend/.env ]; then
+  echo "ERROR: frontend/.env not found. Copy frontend/.env.example to frontend/.env first."
+  exit 1
+fi
+
+echo "-- Starting Postgres --"
 docker compose up -d postgres
 until docker compose exec -T postgres pg_isready -U loanfile > /dev/null 2>&1; do
-    sleep 1  # waits for Postgres to actually accept connections, not just for the container to start
+  sleep 1  # waits for Postgres to actually accept connections, not just for the container to start
 done
 docker compose exec -T postgres psql -U loanfile -d loanfile -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
@@ -44,4 +49,4 @@ echo ""
 echo "Press Ctrl+C to stop both (Postgres container keeps running, docker compose down to stop it)."
 
 trap "kill $BACKEND_PID $FRONTEND_PID" EXIT
-wait 
+wait
