@@ -230,6 +230,13 @@ async def decide_review_item(conn, item_id: str, decision):
             return {"error": f"item already {item['status']}"}
 
         if decision.decision == "reject":
+            if item["item_type"] == "conflict":
+                # close the conflict out, otherwise it stays 'open' forever and rule checks like loan_amount_consistent keep flagging
+                # it as unresolved even though a human already looked at it
+                await conn.execute(
+                    "UPDATE conflicts SET status = 'rejected' WHERE conflict_id = $1",
+                    item["ref_id"],
+                )
             await conn.execute(
                 "UPDATE review_queue SET status = 'rejected', decided_at = now() WHERE item_id = $1",
                 item_id,
