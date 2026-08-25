@@ -77,10 +77,20 @@ function App() {
 
             <div className="flex-1">
                 {!selectedId ? (
-                    <p className="font-body">
-                        Select a loan file from the drawer.
-                    </p>
-                ) : (
+  <div className="max-w-lg">
+    <h1 className="font-heading text-2xl mb-3">Loan File Intelligence System</h1>
+    <p className="font-body text-base mb-4">
+      Upload a pile of loan documents, applications, credit reports, appraisals,
+      amendments, and this system reads them, extracts the facts with a citation
+      to the exact source, catches where two documents disagree, and checks the
+      result against a compliance playbook. Nothing reaches the register without
+      your approval.
+    </p>
+    <p className="font-mono text-sm text-ink/60">
+      Select a loan file from the drawer, or create a new one to get started.
+    </p>
+  </div>
+) : (
                     <>
                         <DocumentToolbar
                             loanFileId={selectedId}
