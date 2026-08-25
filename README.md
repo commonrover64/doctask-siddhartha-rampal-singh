@@ -11,7 +11,7 @@ yet, not placeholders.
 
 ## Setup
 
-Requires Docker and a free Groq API key (console.groq.com, no card / payment
+Requires Docker and a free [Groq](https://groq.com/) API key (no card / payment
 required).
 
 1. `cp backend/.env.example backend/.env`, fill in `GROQ_API_KEY`
