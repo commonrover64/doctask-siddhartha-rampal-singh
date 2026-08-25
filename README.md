@@ -16,18 +16,18 @@ required).
 
 1. `cp backend/.env.example backend/.env`, fill in `GROQ_API_KEY`
 2. `cp frontend/.env.example frontend/.env` (default value already points
-    at the local backend, no edit needed unless you're running the
-    backend somewhere other than `127.0.0.1:8000`)
+   at the local backend, no edit needed unless you're running the
+   backend somewhere other than `127.0.0.1:8000`)
 3. `sudo ./setup.sh`
 
-  This starts a local Postgres (with pgvector) in Docker, installs both
-  backend and frontend dependencies, runs every pending migration, and
-  starts both servers. Backend at http://127.0.0.1:8000/docs, frontend
-  at http://localhost:5173.
+This starts a local Postgres (with pgvector) in Docker, installs both
+backend and frontend dependencies, runs every pending migration, and
+starts both servers. Backend at http://127.0.0.1:8000/docs, frontend
+at http://localhost:5173.
 
-  To also run the file watcher (automatic processing of
-  files dropped into `backend/watched_incoming/<loan_file_id>/`), in a
-  separate terminal: `cd backend && source venv/bin/activate && python -m app.watcher`
+To also run the file watcher (automatic processing of
+files dropped into `backend/watched_incoming/<loan_file_id>/`), in a
+separate terminal: `cd backend && source venv/bin/activate && python -m app.watcher`
 
 ## What's built so far
 
@@ -44,11 +44,10 @@ required).
   to classify a document's type, a conditional edge routes low-confidence
   results to a `flag_for_review` node instead of accepting a guess
   silently
-
-  - Extraction (`app/graph/nodes.py::extract_facts`): pulls structured
-  facts (loan_amount, income, dti_ratio, etc) from documents into an
-  append-only `extracted_facts` table, each fact stores the exact quote
-  it was extracted from as a citation
+    - Extraction (`app/graph/nodes.py::extract_facts`): pulls structured
+      facts (loan_amount, income, dti_ratio, etc) from documents into an
+      append-only `extracted_facts` table, each fact stores the exact quote
+      it was extracted from as a citation
 
 - Reconciliation (`app/graph/nodes.py::reconcile_facts`): compares a
   newly extracted fact against the most recent fact on record for the
@@ -58,7 +57,7 @@ required).
 
 - Human review queue and register: `register` holds only approved
   facts, `review_queue` holds pending decisions, `POST
-  /review/{item_id}/decide` is the single approval gate, rejecting one
+/review/{item_id}/decide` is the single approval gate, rejecting one
   item is its own transaction and never touches siblings,
   `register_history` is an append-only audit trail
 
@@ -74,7 +73,7 @@ required).
   identical behavior with no duplicated logic. The MCP server builds
   and holds its own compiled graph at startup, same pattern the
   watcher uses, since each process needs its own graph object in
-  memory. 
+  memory.
 
 - rule/playbook checking: `app/rules.py` runs a
   user-supplied playbook (`app/playbook.yaml`) against a loan file,
@@ -123,7 +122,6 @@ required).
   changed: approved/kept new/kept old/rejected/superseded, joined
   through to the source document filename. register_history gained
   an `action` column to record which decision produced each row.
-
 
 ## Key decisions made while building
 
@@ -235,18 +233,38 @@ frontend/src/
   api.js                  All fetch calls
   index.css               Design tokens
   App.jsx                  Layout shell, tab routing
-  components/              
-    StatusStamp, 
-    Card, 
-    FileDrawer, 
+  components/
+    StatusStamp,
+    Card,
+    FileDrawer,
     RegisterLedger,
-    ReviewQueue, 
-    FindingsList, 
+    ReviewQueue,
+    FindingsList,
     ChangelogTicker,
-    CostReport, 
+    CostReport,
     DocumentToolbar
 ```
 
 ## Graph layout
 
 ![Graph](backend/graph_layout.png)
+
+## Screenshots
+
+Landing Page
+![Landing Page](screenshots/landing-page.png)
+
+Register
+![Register](/screenshots/register.png)
+
+Review Queue
+![Review Queue](/screenshots/review-queue.png)
+
+Findings
+![Findings](/screenshots/findings.png)
+
+Changelogs
+![Changelogs](/screenshots/changelog.png)
+
+Cost
+![Cost](/screenshots/cost.png)
