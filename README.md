@@ -1,4 +1,5 @@
 # Loan File Intelligence System
+*Built for SuperDocs*
 
 An agentic system that owns a loan file end to end: understands a pile of
 mixed-format documents, checks it against an underwriting playbook, and
